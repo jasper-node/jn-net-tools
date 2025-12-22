@@ -39,31 +39,31 @@ export interface FFILibrary {
   free_string: (ptr: Deno.PointerValue) => Promise<void>;
 }
 
-function getLibraryPath(): string {
+export function getLibraryPath(basePath = "./lib"): string {
   const os = Deno.build.os;
   const arch = Deno.build.arch;
 
   switch (os) {
     case "darwin": {
       if (arch === "aarch64") {
-        return "./lib/jnnt-aarch64.dylib";
+        return `${basePath}/jnnt-aarch64.dylib`;
       } else if (arch === "x86_64") {
-        return "./lib/jnnt-x86_64.dylib";
+        return `${basePath}/jnnt-x86_64.dylib`;
       } else {
         throw new Error(`Unsupported macOS architecture: ${arch}`);
       }
     }
     case "linux": {
       if (arch === "aarch64") {
-        return "./lib/jnnt-aarch64.so";
+        return `${basePath}/jnnt-aarch64.so`;
       } else if (arch === "x86_64") {
-        return "./lib/jnnt-x86_64.so";
+        return `${basePath}/jnnt-x86_64.so`;
       } else {
         throw new Error(`Unsupported Linux architecture: ${arch}`);
       }
     }
     case "windows": {
-      return "./lib/jnnt.dll";
+      return `${basePath}/jnnt.dll`;
     }
     default:
       throw new Error(`Unsupported platform: ${os}`);
@@ -75,8 +75,8 @@ export interface LoadedFFILibrary {
   close: () => void;
 }
 
-export async function loadFFILibrary(): Promise<LoadedFFILibrary> {
-  const libPath = getLibraryPath();
+export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrary> {
+  const libPath = getLibraryPath(basePath);
   const lib = await Deno.dlopen(libPath, {
     net_ping: {
       parameters: ["pointer", "i32", "u32"],

@@ -113,12 +113,12 @@ export class JNNetTools {
   private initialized = false;
   private initError: Error | null = null;
 
-  async init(): Promise<void> {
+  async init(libPath?: string): Promise<void> {
     if (this.initialized) {
       return;
     }
     try {
-      this.lib = await loadFFILibrary();
+      this.lib = await loadFFILibrary(libPath);
       this.initialized = true;
       this.initError = null;
     } catch (e) {
