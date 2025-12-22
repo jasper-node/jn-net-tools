@@ -128,7 +128,7 @@ impl LinuxRawSocket {
             filter: *const libc::sock_filter,
         }
 
-        let insns = program.instructions();
+        let insns = program.get_instructions();
         let prog = sock_fprog {
             len: insns.len() as libc::c_ushort,
             filter: insns.as_ptr() as *const libc::sock_filter,
