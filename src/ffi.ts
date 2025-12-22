@@ -1,0 +1,216 @@
+export interface FFILibrary {
+  net_ping: (
+    target: Deno.PointerValue,
+    count: number,
+    timeout_ms: number,
+  ) => Promise<Deno.PointerValue>;
+  net_trace_route: (
+    target: Deno.PointerValue,
+    max_hops: number,
+    timeout_ms: number,
+  ) => Promise<Deno.PointerValue>;
+  net_mtr: (target: Deno.PointerValue, duration_ms: number) => Promise<Deno.PointerValue>;
+  net_get_interfaces: () => Promise<Deno.PointerValue>;
+  net_arp_scan: (iface: Deno.PointerValue, timeout_ms: number) => Promise<Deno.PointerValue>;
+  net_sniff: (
+    iface: Deno.PointerValue,
+    filter: Deno.PointerValue,
+    duration_ms: number,
+    max_packets: number,
+  ) => Promise<Deno.PointerValue>;
+  net_check_port: (
+    target: Deno.PointerValue,
+    port: number,
+    proto: Deno.PointerValue,
+    timeout_ms: number,
+  ) => Promise<Deno.PointerValue>;
+  net_bandwidth_test: (
+    target: Deno.PointerValue,
+    port: number,
+    proto: Deno.PointerValue,
+    duration_ms: number,
+  ) => Promise<Deno.PointerValue>;
+  net_dns_lookup: (
+    domain: Deno.PointerValue,
+    server: Deno.PointerValue | null,
+    record_type: Deno.PointerValue | null,
+  ) => Promise<Deno.PointerValue>;
+  net_check_prerequisites: () => Promise<Deno.PointerValue>;
+  free_string: (ptr: Deno.PointerValue) => Promise<void>;
+}
+
+function getLibraryPath(): string {
+  const os = Deno.build.os;
+  const arch = Deno.build.arch;
+
+  switch (os) {
+    case "darwin": {
+      if (arch === "aarch64") {
+        return "./lib/jnnt-aarch64.dylib";
+      } else if (arch === "x86_64") {
+        return "./lib/jnnt-x86_64.dylib";
+      } else {
+        throw new Error(`Unsupported macOS architecture: ${arch}`);
+      }
+    }
+    case "linux": {
+      if (arch === "aarch64") {
+        return "./lib/jnnt-aarch64.so";
+      } else if (arch === "x86_64") {
+        return "./lib/jnnt-x86_64.so";
+      } else {
+        throw new Error(`Unsupported Linux architecture: ${arch}`);
+      }
+    }
+    case "windows": {
+      return "./lib/jnnt.dll";
+    }
+    default:
+      throw new Error(`Unsupported platform: ${os}`);
+  }
+}
+
+export interface LoadedFFILibrary {
+  symbols: FFILibrary;
+  close: () => void;
+}
+
+export async function loadFFILibrary(): Promise<LoadedFFILibrary> {
+  const libPath = getLibraryPath();
+  const lib = await Deno.dlopen(libPath, {
+    net_ping: {
+      parameters: ["pointer", "i32", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_trace_route: {
+      parameters: ["pointer", "i32", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_mtr: {
+      parameters: ["pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_get_interfaces: {
+      parameters: [],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_arp_scan: {
+      parameters: ["pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_sniff: {
+      parameters: ["pointer", "pointer", "u32", "i32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_check_port: {
+      parameters: ["pointer", "u16", "pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_bandwidth_test: {
+      parameters: ["pointer", "u16", "pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_dns_lookup: {
+      parameters: ["pointer", "pointer", "pointer"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_check_prerequisites: {
+      parameters: [],
+      result: "pointer",
+      nonblocking: true,
+    },
+    free_string: {
+      parameters: ["pointer"],
+      result: "void",
+      nonblocking: true,
+    },
+  });
+
+  return {
+    symbols: lib.symbols as unknown as FFILibrary,
+    close: () => lib.close(),
+  };
+}
+
+function cStringToString(ptr: Deno.PointerValue): string {
+  if (ptr === null) {
+    return "";
+  }
+  const view = new Deno.UnsafePointerView(ptr);
+  return view.getCString();
+}
+
+export async function callFFIString<T extends unknown[]>(
+  lib: FFILibrary,
+  fn: (ptr: Deno.PointerValue, ...args: T) => Promise<Deno.PointerValue>,
+  str: string,
+  ...args: T
+): Promise<string> {
+  const cstr = new TextEncoder().encode(str + "\0");
+  const ptr = Deno.UnsafePointer.of(cstr);
+  if (ptr === null) {
+    throw new Error("Failed to create C string");
+  }
+  try {
+    const resultPtr = await fn(ptr, ...args);
+    if (resultPtr === null) {
+      return "";
+    }
+    const result = cStringToString(resultPtr);
+    await lib.free_string(resultPtr);
+    return result;
+  } finally {
+    // Note: We don't free the input string as it's on the stack (JS managed)
+  }
+}
+
+export async function callFFIStringNullable(
+  lib: FFILibrary,
+  // deno-lint-ignore no-explicit-any
+  fn: (ptr: Deno.PointerValue, ...args: any[]) => Promise<Deno.PointerValue>,
+  str: string,
+  ...args: (string | null | number | Deno.PointerValue)[]
+): Promise<string> {
+  const enc = new TextEncoder();
+  const cstr = enc.encode(str + "\0");
+  const ptr = Deno.UnsafePointer.of(cstr);
+  if (ptr === null) {
+    throw new Error("Failed to create C string");
+  }
+
+  // Keep references to buffers to prevent GC
+  const buffers: Uint8Array[] = [cstr];
+
+  const processedArgs = args.map((arg) => {
+    if (typeof arg === "string") {
+      const buf = enc.encode(arg + "\0");
+      buffers.push(buf);
+      return Deno.UnsafePointer.of(buf);
+    } else if (arg === null) {
+      return null;
+    }
+    return arg;
+  });
+
+  try {
+    const resultPtr = await fn(ptr, ...processedArgs);
+    if (resultPtr === null) {
+      return "";
+    }
+    const result = cStringToString(resultPtr);
+    await lib.free_string(resultPtr);
+    return result;
+  } finally {
+    // Keep buffers alive
+    buffers.forEach((b) => b);
+  }
+}

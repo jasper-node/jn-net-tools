@@ -1,0 +1,18 @@
+# OS Files
+.DS_Store
+.idea/
+
+# Project Files
+tmp/
+
+# Rust Build Artifacts
+**/target/
+
+# Build Artifacts (temporary build directory from CI/CD)
+lib/
+
+# Deno Cache
+.deno/
+
+# Environment variables
+.env*

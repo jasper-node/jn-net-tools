@@ -1,0 +1,29 @@
+[package]
+name = "jnnt"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "jnnt"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pnet = "0.35"
+socket2 = "0.5"
+libc = "0.2"
+tokio = { version = "1", features = ["net", "io-util", "fs", "macros", "rt", "time", "sync"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+hickory-resolver = "0.24"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+pcap = "2.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = "0.7"
+slab = "0.4"
+pcap = "2.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+pcap = "2.0"
