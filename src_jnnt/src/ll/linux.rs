@@ -65,7 +65,7 @@ impl LinuxRawSocket {
 
         // Get interface index using if_nametoindex (more portable)
         let ifindex = unsafe {
-            let index = libc::if_nametoindex(c_str.as_ptr());
+            let index = libc::if_nametoindex(c_str.as_ptr() as *const _);
             if index == 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -106,7 +106,7 @@ impl LinuxRawSocket {
         // Use pcap to compile the filter into BPF bytecode
         // We need to get the interface name from ifreq
         let iface_name = unsafe {
-            std::ffi::CStr::from_ptr(self.ifreq.ifr_name.as_ptr() as *const libc::c_char)
+            std::ffi::CStr::from_ptr(self.ifreq.ifr_name.as_ptr() as *const _)
         };
         
         let iface_str = iface_name.to_str()
@@ -128,9 +128,10 @@ impl LinuxRawSocket {
             filter: *const libc::sock_filter,
         }
 
+        let insns = program.instructions();
         let prog = sock_fprog {
-            len: program.len() as libc::c_ushort,
-            filter: program.as_ptr() as *const libc::sock_filter,
+            len: insns.len() as libc::c_ushort,
+            filter: insns.as_ptr() as *const libc::sock_filter,
         };
 
         unsafe {
