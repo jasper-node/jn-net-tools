@@ -245,6 +245,11 @@ The pre-compiled FFI binaries are built and released automatically via GitHub Ac
    - Click **Run workflow**.
    - (Optional) Provide a version tag (e.g., `v1.0.0`).
 
+3. **JSR PublishL**
+   ```bash
+   deno publish
+   ```
+
 ## License
 
 MIT
