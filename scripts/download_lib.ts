@@ -5,7 +5,7 @@
  */
 
 const REPO = "jasper-node/jn-net-tools";
-const ASSET_NAME = "lib-binaries.zip";
+const ASSET_NAME = "lib-binaries.tar.gz";
 const LIB_DIR = "lib";
 
 async function downloadAsset(url: string, dest: string) {
@@ -18,14 +18,14 @@ async function downloadAsset(url: string, dest: string) {
 }
 
 async function unzip(zipPath: string, destDir: string) {
-  console.log(`Unzipping ${zipPath} to ${destDir}...`);
+  console.log(`Extracting ${zipPath} to ${destDir}...`);
   // Use 'tar' which is available on macOS, Linux, and Windows 10+
   const cmd = new Deno.Command("tar", {
-    args: ["-xf", zipPath, "-C", destDir],
+    args: ["-xzf", zipPath, "-C", destDir],
   });
   const { success, stderr } = await cmd.output();
   if (!success) {
-    throw new Error(`Failed to unzip: ${new TextDecoder().decode(stderr)}`);
+    throw new Error(`Failed to extract: ${new TextDecoder().decode(stderr)}`);
   }
 }
 
@@ -72,14 +72,14 @@ export async function downloadToLocalLib() {
 
   await Deno.mkdir(LIB_DIR, { recursive: true });
 
-  const tempZip = `${LIB_DIR}/temp_binaries.zip`;
+  const tempArchive = `${LIB_DIR}/temp_binaries.tar.gz`;
   console.log(`Downloading ${ASSET_NAME} from ${asset.browser_download_url}...`);
-  await downloadAsset(asset.browser_download_url, tempZip);
+  await downloadAsset(asset.browser_download_url, tempArchive);
 
-  await unzip(tempZip, LIB_DIR);
+  await unzip(tempArchive, LIB_DIR);
   await fixNaming(LIB_DIR);
 
-  await Deno.remove(tempZip);
+  await Deno.remove(tempArchive);
 
   console.log("✅ Successfully downloaded and extracted binaries to lib/");
 }

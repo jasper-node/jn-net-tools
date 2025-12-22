@@ -204,7 +204,7 @@ jobs:
       - name: Create release archive
         run: |
           cd dist/lib-jsr
-          zip -r ../lib-binaries.zip .
+          tar -czf ../lib-binaries.tar.gz .
           cd ../..
 
       - name: Extract version from tag
