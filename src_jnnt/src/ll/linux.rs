@@ -14,6 +14,9 @@ pub struct LinuxRawSocket {
     ifreq: libc::ifreq,
 }
 
+unsafe impl Send for LinuxRawSocket {}
+unsafe impl Sync for LinuxRawSocket {}
+
 impl LinuxRawSocket {
     pub async fn new() -> io::Result<Self> {
         let protocol = (ETH_P_ALL as u16).to_be() as i32;
@@ -128,8 +131,8 @@ impl LinuxRawSocket {
         }
 
         let prog = sock_fprog {
-            len: bpf_program.len() as libc::c_ushort,
-            filter: bpf_program.as_ptr() as *const libc::sock_filter,
+            len: bpf_program.total_len as libc::c_ushort,
+            filter: bpf_program.insns as *const libc::sock_filter,
         };
 
         unsafe {

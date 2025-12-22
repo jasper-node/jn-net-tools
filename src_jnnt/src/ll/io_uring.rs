@@ -119,10 +119,12 @@ fn run_io_uring_driver(
         ring.submit_and_wait(1)?;
 
         // Process completions
+        let mut completions = Vec::with_capacity(ENTRIES as usize);
         for cqe in ring.completion() {
-            let key = cqe.user_data();
-            let result = cqe.result();
+            completions.push((cqe.user_data(), cqe.result()));
+        }
 
+        for (key, result) in completions {
             // Check if this was a write operation
             if key & WRITE_MASK == WRITE_MASK {
                 // Write completed, buffer can be freed

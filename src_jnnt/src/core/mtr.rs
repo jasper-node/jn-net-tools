@@ -181,8 +181,8 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
         let timeout_val: u32 = timeout.as_millis() as u32;
         #[cfg(not(target_os = "windows"))]
         let timeout_tv = libc::timeval {
-            tv_sec: timeout.as_secs() as i64,
-            tv_usec: timeout.subsec_micros() as i32,
+            tv_sec: timeout.as_secs() as _,
+            tv_usec: timeout.subsec_micros() as _,
         };
 
         unsafe {
@@ -205,7 +205,7 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
         }
 
         let mut sockaddr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-        sockaddr.sin_family = libc::AF_INET as u8;
+        sockaddr.sin_family = libc::AF_INET as _;
         if let std::net::SocketAddr::V4(addr) = target_addr_clone {
             sockaddr.sin_addr.s_addr = u32::from_ne_bytes(addr.ip().octets());
         }
