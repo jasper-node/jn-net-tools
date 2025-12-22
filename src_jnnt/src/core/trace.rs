@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json;
+#[cfg(not(target_os = "windows"))]
 use libc;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -204,7 +205,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
             sockfd as _,
             winsock::SOL_SOCKET as i32,
             winsock::SO_RCVTIMEO as i32,
-            &timeout_val as *const _ as *const i8,
+            &timeout_val as *const _ as *const u8,
             std::mem::size_of::<u32>() as i32,
         );
         #[cfg(not(target_os = "windows"))]
@@ -231,7 +232,17 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
         sockaddr.sin_family = libc::AF_INET as _;
     }
     if let std::net::SocketAddr::V4(addr) = target_addr {
-        sockaddr.sin_addr.s_addr = u32::from_ne_bytes(addr.ip().octets());
+        #[cfg(target_os = "windows")]
+        {
+            let ip_u32 = u32::from_ne_bytes(addr.ip().octets());
+            unsafe {
+                std::ptr::write(&mut sockaddr.sin_addr as *mut _ as *mut u32, ip_u32);
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            sockaddr.sin_addr.s_addr = u32::from_ne_bytes(addr.ip().octets());
+        }
     }
     sockaddr.sin_port = 0;
 
@@ -253,7 +264,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                 sockfd as _,
                 winsock::IPPROTO_IP as i32,
                 winsock::IP_TTL as i32,
-                &ttl_val as *const _ as *const i8,
+                &ttl_val as *const _ as *const u8,
                 std::mem::size_of::<i32>() as i32,
             );
             #[cfg(not(target_os = "windows"))]
@@ -279,7 +290,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                 {
                     winsock::sendto(
                         sockfd as _,
-                        packet.as_ptr() as *const i8,
+                        packet.as_ptr() as *const u8,
                         packet.len() as i32,
                         0,
                         &sockaddr as *const _ as *const winsock::SOCKADDR,
@@ -307,7 +318,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                     {
                         winsock::recvfrom(
                             sockfd as _,
-                            buf.as_mut_ptr() as *mut i8,
+                            buf.as_mut_ptr() as *mut u8,
                             buf.len() as i32,
                             0,
                             std::ptr::null_mut(),

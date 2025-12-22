@@ -123,14 +123,14 @@ pub fn arp_scan(iface_name: &str, timeout_ms: u32) -> String {
         // Small delay to ensure socket is ready
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        // Split socket to allow concurrent Read and Write
-        let (mut reader, mut writer) = tokio::io::split(socket);
+        // Use a channel to send packets from the sender task to the writer
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
         
         let mut devices: HashMap<Ipv4Addr, [u8; 6]> = HashMap::new();
         let timeout = Duration::from_millis(timeout_ms as u64);
         let base_ip = Ipv4Addr::from(u32::from_be_bytes(src_ip.octets()) & 0xFFFFFF00);
 
-        // Spawn Sender Task - sends ARP requests concurrently
+        // Spawn Sender Task - generates ARP requests and sends them via channel
         let sender_task = tokio::spawn(async move {
             for i in 1..255 {
                 let target_ip = Ipv4Addr::from(u32::from_be_bytes(base_ip.octets()) | i);
@@ -139,15 +139,16 @@ pub fn arp_scan(iface_name: &str, timeout_ms: u32) -> String {
                 }
 
                 let packet = build_arp_request(&src_mac, src_ip, target_ip);
-                if writer.write_all(&packet).await.is_err() {
-                    // Log error or break
+                if tx.send(packet).is_err() {
+                    // Receiver dropped, exit
+                    break;
                 }
                 // Faster sending: 200 micros is usually safe for local LAN
                 tokio::time::sleep(Duration::from_micros(200)).await;
             }
         });
 
-        // Main thread: Reader Loop - reads ARP replies concurrently
+        // Main task: Handle both reading from socket and writing packets from channel
         let mut buffer = vec![0u8; 2048];
         let deadline = tokio::time::Instant::now() + timeout;
 
@@ -157,34 +158,52 @@ pub fn arp_scan(iface_name: &str, timeout_ms: u32) -> String {
                 break;
             }
 
-            // Race the read against the timeout
-            match tokio::time::timeout(remaining, reader.read(&mut buffer)).await {
-                Ok(Ok(n)) => {
-                    if n == 0 {
-                        break; // EOF
-                    }
-                    if let Some(ethernet) = EthernetPacket::new(&buffer[..n]) {
-                        let pkt_src_mac = ethernet.get_source().octets();
-                        // Filter out our own sent packets
-                        if pkt_src_mac != src_mac {
-                            if ethernet.get_ethertype() == EtherTypes::Arp {
-                                if let Some(arp) = ArpPacket::new(ethernet.payload()) {
-                                    if arp.get_operation() == ArpOperations::Reply {
-                                        let ip = Ipv4Addr::from(arp.get_sender_proto_addr());
-                                        let mac = arp.get_sender_hw_addr();
-                                        devices.insert(ip, mac.octets());
+            tokio::select! {
+                // Try to read a packet from the socket
+                read_result = tokio::time::timeout(remaining, socket.read(&mut buffer)) => {
+                    match read_result {
+                        Ok(Ok(n)) => {
+                            if n == 0 {
+                                break; // EOF
+                            }
+                            if let Some(ethernet) = EthernetPacket::new(&buffer[..n]) {
+                                let pkt_src_mac = ethernet.get_source().octets();
+                                // Filter out our own sent packets
+                                if pkt_src_mac != src_mac {
+                                    if ethernet.get_ethertype() == EtherTypes::Arp {
+                                        if let Some(arp) = ArpPacket::new(ethernet.payload()) {
+                                            if arp.get_operation() == ArpOperations::Reply {
+                                                let ip = Ipv4Addr::from(arp.get_sender_proto_addr());
+                                                let mac = arp.get_sender_hw_addr();
+                                                devices.insert(ip, mac.octets());
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                        Ok(Err(_)) => break, // Read Error
+                        Err(_) => break,     // Timeout
                     }
                 }
-                Ok(Err(_)) => break, // Read Error
-                Err(_) => break,     // Timeout
+                // Try to write a packet from the channel
+                packet_opt = rx.recv() => {
+                    match packet_opt {
+                        Some(packet) => {
+                            if socket.write_all(&packet).await.is_err() {
+                                break;
+                            }
+                        }
+                        None => {
+                            // Channel closed, sender finished
+                            // Continue reading until timeout
+                        }
+                    }
+                }
             }
         }
         
-        // Ensure sender finishes (optional, usually we just drop it)
+        // Ensure sender finishes
         let _ = sender_task.await;
 
         let mut dev_list: Vec<ArpDevice> = devices

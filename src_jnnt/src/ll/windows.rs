@@ -5,11 +5,11 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 #[cfg(target_os = "windows")]
-use pcap::{Active, Capture, Device, sendqueue::SendQueue};
+use pcap::{Active, Capture, sendqueue::SendQueue};
 
 pub struct WindowsRawSocket {
     capture: Arc<Mutex<Capture<Active>>>,
-    send_queue: Arc<SendQueue>,
+    send_queue: Arc<Mutex<SendQueue>>,
     rx_channel: mpsc::UnboundedReceiver<Vec<u8>>,
     _rx_task: JoinHandle<()>,
 }
@@ -32,8 +32,10 @@ impl WindowsRawSocket {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to set non-blocking: {}", e)))?;
 
         let send_queue = Arc::new(
-            SendQueue::new(1024 * 1024)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to create send queue: {}", e)))?,
+            Mutex::new(
+                SendQueue::new(1024 * 1024)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to create send queue: {}", e)))?
+            ),
         );
 
         let capture = Arc::new(Mutex::new(cap));
@@ -48,7 +50,9 @@ impl WindowsRawSocket {
                         Ok(guard) => guard,
                         Err(_) => break, // Mutex poisoned, exit
                     };
-                    cap_guard.next_packet()
+                    let result = cap_guard.next_packet();
+                    drop(cap_guard); // Explicitly drop guard before using result
+                    result
                 };
 
                 match packet_result {
@@ -134,7 +138,17 @@ impl AsyncWrite for WindowsRawSocket {
         let me = self.get_mut();
         
         // Queue the packet
-        match me.send_queue.queue(None, buf) {
+        let mut send_queue_guard = match me.send_queue.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return std::task::Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Send queue mutex poisoned",
+                )));
+            }
+        };
+        
+        match send_queue_guard.queue(None, buf) {
             Ok(_) => {
                 // Transmit immediately (synchronous for now)
                 // In a more sophisticated implementation, we might batch packets
@@ -147,7 +161,7 @@ impl AsyncWrite for WindowsRawSocket {
                         )));
                     }
                 };
-                match me.send_queue.transmit(&mut *cap_guard, pcap::sendqueue::SendSync::Off) {
+                match send_queue_guard.transmit(&mut *cap_guard, pcap::sendqueue::SendSync::Off) {
                     Ok(_) => std::task::Poll::Ready(Ok(buf.len())),
                     Err(e) => std::task::Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::Other,
