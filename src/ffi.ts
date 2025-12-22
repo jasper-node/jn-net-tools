@@ -77,6 +77,32 @@ export interface LoadedFFILibrary {
 
 export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrary> {
   const libPath = getLibraryPath(basePath);
+
+  // Check if library exists, download if missing
+  try {
+    await Deno.stat(libPath);
+  } catch {
+    // Library doesn't exist, download it
+    console.log(`Library not found at ${libPath}, downloading...`);
+    const downloadCmd = new Deno.Command("deno", {
+      args: [
+        "run",
+        "--allow-net",
+        "--allow-write",
+        "--allow-run",
+        "--allow-read",
+        "jsr:@controlx-io/jn-net-tools/download_lib",
+      ],
+    });
+    const { success, stderr } = await downloadCmd.output();
+    if (!success) {
+      throw new Error(
+        `Failed to download library: ${new TextDecoder().decode(stderr)}`,
+      );
+    }
+    console.log("✅ Library downloaded successfully");
+  }
+
   const lib = await Deno.dlopen(libPath, {
     net_ping: {
       parameters: ["pointer", "i32", "u32"],
