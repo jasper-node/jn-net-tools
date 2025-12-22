@@ -214,6 +214,25 @@ Captured packets include raw packet data as hex-encoded string:
 }
 ```
 
+## Release Build
+
+The pre-compiled FFI binaries are built and released automatically via GitHub Actions.
+
+### Triggering a Release
+
+1. **Tag-based trigger:**
+   Push a version tag to the repository:
+   ```bash
+   VERSION=v1.0.0 && git tag $VERSION && git push origin $VERSION
+   ```
+   This triggers the `Build and Bundle Binaries` workflow, which builds all binaries and creates a new GitHub Release.
+
+2. **Manual trigger:**
+   - Go to the **Actions** tab in the GitHub repository.
+   - Select the **Build and Bundle Binaries** workflow.
+   - Click **Run workflow**.
+   - (Optional) Provide a version tag (e.g., `v1.0.0`).
+
 ## License
 
 MIT
