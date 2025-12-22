@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 #[cfg(target_os = "windows")]
-use pcap::{Active, Capture, Device, SendQueue};
+use pcap::{Active, Capture, Device, sendqueue::SendQueue};
 
 pub struct WindowsRawSocket {
     capture: Arc<Mutex<Capture<Active>>>,
@@ -16,15 +16,15 @@ pub struct WindowsRawSocket {
 
 impl WindowsRawSocket {
     pub async fn new() -> io::Result<Self> {
-        // Find the default device or first available device
-        let device = Device::list()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to list devices: {}", e)))?
-            .into_iter()
-            .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No network device found"))?;
+        // Use pnet_datalink to find the default or first available interface
+        let interfaces = pnet::datalink::interfaces();
+        let interface = interfaces.iter()
+            .find(|i| !i.is_loopback() && !i.ips.is_empty())
+            .or_else(|| interfaces.iter().next())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No network interface found"))?;
 
-        let cap = Capture::from_device(device.name.as_str())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open device: {}", e)))?
+        let cap = Capture::from_device(interface.name.as_str())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open device {}: {}", interface.name, e)))?
             .immediate_mode(true)
             .open()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open capture: {}", e)))?

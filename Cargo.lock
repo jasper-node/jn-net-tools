@@ -390,6 +390,7 @@ dependencies = [
  "slab",
  "socket2 0.5.10",
  "tokio",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

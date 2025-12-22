@@ -18,12 +18,13 @@ rand = "0.8"
 hickory-resolver = "0.24"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-pcap = "2.0"
+pcap = "2.2.0"
+windows-sys = { version = "0.52", features = ["Win32_Networking_WinSock", "Win32_Foundation"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = "0.7"
 slab = "0.4"
-pcap = "2.0"
+pcap = "2.2.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-pcap = "2.0"
+pcap = "2.2.0"

@@ -4,6 +4,9 @@ use libc;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Networking::WinSock as winsock;
+
 #[derive(Serialize, Deserialize)]
 pub struct ProbeResult {
     pub ip: String,
@@ -163,9 +166,13 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
     let target_addr = SocketAddr::new(std::net::IpAddr::V4(target_ip), 0);
 
     // Create raw socket for ICMP
-    let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP) };
     #[cfg(target_os = "windows")]
-    if sockfd == libc::INVALID_SOCKET {
+    let sockfd = unsafe { winsock::socket(winsock::AF_INET as i32, winsock::SOCK_RAW as i32, winsock::IPPROTO_ICMP as i32) };
+    #[cfg(not(target_os = "windows"))]
+    let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP) };
+
+    #[cfg(target_os = "windows")]
+    if sockfd == winsock::INVALID_SOCKET {
         let result = TraceRouteResult {
             target: target.to_string(),
             hops: vec![],
@@ -193,12 +200,12 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
     };
     unsafe {
         #[cfg(target_os = "windows")]
-        libc::setsockopt(
-            sockfd,
-            libc::SOL_SOCKET,
-            libc::SO_RCVTIMEO,
+        winsock::setsockopt(
+            sockfd as _,
+            winsock::SOL_SOCKET as i32,
+            winsock::SO_RCVTIMEO as i32,
             &timeout_val as *const _ as *const i8,
-            std::mem::size_of::<u32>() as libc::socklen_t,
+            std::mem::size_of::<u32>() as i32,
         );
         #[cfg(not(target_os = "windows"))]
         libc::setsockopt(
@@ -210,8 +217,19 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    let mut sockaddr: winsock::SOCKADDR_IN = unsafe { std::mem::zeroed() };
+    #[cfg(not(target_os = "windows"))]
     let mut sockaddr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-    sockaddr.sin_family = libc::AF_INET as _;
+
+    #[cfg(target_os = "windows")]
+    {
+        sockaddr.sin_family = winsock::AF_INET as _;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        sockaddr.sin_family = libc::AF_INET as _;
+    }
     if let std::net::SocketAddr::V4(addr) = target_addr {
         sockaddr.sin_addr.s_addr = u32::from_ne_bytes(addr.ip().octets());
     }
@@ -231,12 +249,12 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
         let ttl_val = ttl as i32;
         unsafe {
             #[cfg(target_os = "windows")]
-            libc::setsockopt(
-                sockfd,
-                libc::IPPROTO_IP,
-                libc::IP_TTL,
+            winsock::setsockopt(
+                sockfd as _,
+                winsock::IPPROTO_IP as i32,
+                winsock::IP_TTL as i32,
                 &ttl_val as *const _ as *const i8,
-                std::mem::size_of::<i32>() as libc::socklen_t,
+                std::mem::size_of::<i32>() as i32,
             );
             #[cfg(not(target_os = "windows"))]
             libc::setsockopt(
@@ -259,13 +277,13 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
             let send_result = unsafe {
                 #[cfg(target_os = "windows")]
                 {
-                    libc::sendto(
-                        sockfd,
+                    winsock::sendto(
+                        sockfd as _,
                         packet.as_ptr() as *const i8,
                         packet.len() as i32,
                         0,
-                        &sockaddr as *const _ as *const libc::sockaddr,
-                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                        &sockaddr as *const _ as *const winsock::SOCKADDR,
+                        std::mem::size_of::<winsock::SOCKADDR_IN>() as i32,
                     )
                 }
                 #[cfg(not(target_os = "windows"))]
@@ -277,7 +295,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                         0,
                         &sockaddr as *const _ as *const libc::sockaddr,
                         std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-                    )
+                    ) as i32
                 }
             };
 
@@ -287,8 +305,8 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                 let recv_result = unsafe {
                     #[cfg(target_os = "windows")]
                     {
-                        libc::recvfrom(
-                            sockfd,
+                        winsock::recvfrom(
+                            sockfd as _,
                             buf.as_mut_ptr() as *mut i8,
                             buf.len() as i32,
                             0,
@@ -305,7 +323,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                             0,
                             std::ptr::null_mut(),
                             std::ptr::null_mut(),
-                        )
+                        ) as i32
                     }
                 };
 
@@ -350,7 +368,7 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
 
     unsafe {
         #[cfg(target_os = "windows")]
-        libc::closesocket(sockfd);
+        winsock::closesocket(sockfd as _);
         #[cfg(not(target_os = "windows"))]
         libc::close(sockfd);
     }
