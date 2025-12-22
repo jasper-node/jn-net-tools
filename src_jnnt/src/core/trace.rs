@@ -164,6 +164,16 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
 
     // Create raw socket for ICMP
     let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP) };
+    #[cfg(target_os = "windows")]
+    if sockfd == libc::INVALID_SOCKET {
+        let result = TraceRouteResult {
+            target: target.to_string(),
+            hops: vec![],
+            error: Some("Failed to create raw socket (may need root privileges)".to_string()),
+        };
+        return serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string());
+    }
+    #[cfg(not(target_os = "windows"))]
     if sockfd < 0 {
         let result = TraceRouteResult {
             target: target.to_string(),
@@ -174,11 +184,23 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
     }
 
     // Set socket timeout
+    #[cfg(target_os = "windows")]
+    let timeout_val: u32 = timeout.as_millis() as u32;
+    #[cfg(not(target_os = "windows"))]
     let timeout_tv = libc::timeval {
         tv_sec: timeout.as_secs() as i64,
         tv_usec: timeout.subsec_micros() as i32,
     };
     unsafe {
+        #[cfg(target_os = "windows")]
+        libc::setsockopt(
+            sockfd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &timeout_val as *const _ as *const i8,
+            std::mem::size_of::<u32>() as libc::socklen_t,
+        );
+        #[cfg(not(target_os = "windows"))]
         libc::setsockopt(
             sockfd,
             libc::SOL_SOCKET,
@@ -208,6 +230,15 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
         // Set TTL for this hop
         let ttl_val = ttl as i32;
         unsafe {
+            #[cfg(target_os = "windows")]
+            libc::setsockopt(
+                sockfd,
+                libc::IPPROTO_IP,
+                libc::IP_TTL,
+                &ttl_val as *const _ as *const i8,
+                std::mem::size_of::<i32>() as libc::socklen_t,
+            );
+            #[cfg(not(target_os = "windows"))]
             libc::setsockopt(
                 sockfd,
                 libc::IPPROTO_IP,
@@ -226,28 +257,56 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
 
             // Send packet
             let send_result = unsafe {
-                libc::sendto(
-                    sockfd,
-                    packet.as_ptr() as *const libc::c_void,
-                    packet.len(),
-                    0,
-                    &sockaddr as *const _ as *const libc::sockaddr,
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-                )
+                #[cfg(target_os = "windows")]
+                {
+                    libc::sendto(
+                        sockfd,
+                        packet.as_ptr() as *const i8,
+                        packet.len() as i32,
+                        0,
+                        &sockaddr as *const _ as *const libc::sockaddr,
+                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    )
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    libc::sendto(
+                        sockfd,
+                        packet.as_ptr() as *const libc::c_void,
+                        packet.len(),
+                        0,
+                        &sockaddr as *const _ as *const libc::sockaddr,
+                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    )
+                }
             };
 
             if send_result > 0 {
                 // Try to receive reply
                 let mut buf = [0u8; 1024];
                 let recv_result = unsafe {
-                    libc::recvfrom(
-                        sockfd,
-                        buf.as_mut_ptr() as *mut libc::c_void,
-                        buf.len(),
-                        0,
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                    )
+                    #[cfg(target_os = "windows")]
+                    {
+                        libc::recvfrom(
+                            sockfd,
+                            buf.as_mut_ptr() as *mut i8,
+                            buf.len() as i32,
+                            0,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        )
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        libc::recvfrom(
+                            sockfd,
+                            buf.as_mut_ptr() as *mut libc::c_void,
+                            buf.len(),
+                            0,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        )
+                    }
                 };
 
                 if recv_result > 0 {
@@ -290,6 +349,9 @@ pub fn trace_route(target: &str, max_hops: i32, timeout_ms: u32) -> String {
     }
 
     unsafe {
+        #[cfg(target_os = "windows")]
+        libc::closesocket(sockfd);
+        #[cfg(not(target_os = "windows"))]
         libc::close(sockfd);
     }
 
