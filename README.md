@@ -35,7 +35,7 @@ deno add jsr:@controlx-io/jn-net-tools
 
 - **Deno**: v2.6+ (Requires `--allow-ffi --unstable-ffi`)
 - **Rust**: v1.91+ (Only if building from source)
-- **Linux**: `setcap` may be required for raw socket tools (Ping/MTR) without root.
+- **Linux**: `libpcap-dev` is required for compilation. `setcap` may be required for raw socket tools (Ping/MTR) without root.
 - **Windows**: [Npcap](https://npcap.com/) must be installed (ensure "Install Npcap in WinPcap API-compatible Mode" is checked).
 
 ## Build & Install
