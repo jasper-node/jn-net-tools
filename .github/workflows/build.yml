@@ -110,7 +110,6 @@ jobs:
           [target.aarch64-unknown-linux-gnu]
           # Use the 'main' image tag which uses a newer Ubuntu version (usually 20.04+)
           image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
-          
           pre-build = [
               "dpkg --add-architecture arm64",
               "apt-get update && apt-get install -y libpcap-dev:arm64"

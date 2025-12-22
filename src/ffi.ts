@@ -77,30 +77,47 @@ export interface LoadedFFILibrary {
 
 export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrary> {
   const libPath = getLibraryPath(basePath);
+  const isDefaultPath = basePath === undefined || basePath === "./lib";
 
-  // Check if library exists, download if missing
+  // Check if library exists, download if missing (only for default path)
   try {
     await Deno.stat(libPath);
   } catch {
-    // Library doesn't exist, download it
-    console.log(`Library not found at ${libPath}, downloading...`);
-    const downloadCmd = new Deno.Command("deno", {
-      args: [
-        "run",
-        "--allow-net",
-        "--allow-write",
-        "--allow-run",
-        "--allow-read",
-        "jsr:@controlx-io/jn-net-tools/download_lib",
-      ],
-    });
-    const { success, stderr } = await downloadCmd.output();
-    if (!success) {
+    // Library doesn't exist
+    if (isDefaultPath) {
+      // For default path, try to download it
+      console.log(`Library not found at ${libPath}, downloading...`);
+      const downloadCmd = new Deno.Command("deno", {
+        args: [
+          "run",
+          "--allow-net",
+          "--allow-write",
+          "--allow-run",
+          "--allow-read",
+          "jsr:@controlx-io/jn-net-tools/download_lib",
+        ],
+      });
+      const { success, stderr } = await downloadCmd.output();
+      if (!success) {
+        throw new Error(
+          `Failed to download library: ${new TextDecoder().decode(stderr)}`,
+        );
+      }
+      console.log("✅ Library downloaded successfully");
+      // Verify library exists after download
+      try {
+        await Deno.stat(libPath);
+      } catch {
+        throw new Error(
+          `Failed to open dynamic library: Library not found at ${libPath} after download.`,
+        );
+      }
+    } else {
+      // For custom paths, don't download - just fail with a clear error
       throw new Error(
-        `Failed to download library: ${new TextDecoder().decode(stderr)}`,
+        `Failed to open dynamic library: Library not found at ${libPath}. Please ensure the library exists at the specified path.`,
       );
     }
-    console.log("✅ Library downloaded successfully");
   }
 
   const lib = await Deno.dlopen(libPath, {
