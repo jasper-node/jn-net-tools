@@ -1,15 +1,12 @@
 name: Build and Bundle Binaries
 
 permissions:
-  contents: write # required for softprops/action-gh-release to create releases
+  contents: write
 
 on:
-  # Trigger on version tags (for releases)
   push:
     tags:
-      - "v*.*.*" # v1.0.0, v2.3.4, etc.
-
-  # Allow manual triggering (for testing)
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       version:
@@ -30,12 +27,10 @@ jobs:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
       - name: Build macOS Intel (x86_64)
-        run: |
-          cargo build -p jnnt --release --target x86_64-apple-darwin
+        run: cargo build -p jnnt --release --target x86_64-apple-darwin
 
       - name: Build macOS Apple Silicon (aarch64)
-        run: |
-          cargo build -p jnnt --release --target aarch64-apple-darwin
+        run: cargo build -p jnnt --release --target aarch64-apple-darwin
 
       - name: Prepare macOS binaries
         run: |
@@ -97,18 +92,22 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
 
-      - name: Install cross-compilation dependencies
+      # We install 'cross' using a binary release for speed (cargo install is slow)
+      - name: Install Cross
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libpcap-dev
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall -y cross
 
+      # Standard build for x86 (faster to run natively than in cross)
       - name: Build Linux x86_64
         run: |
+          sudo apt-get update && sudo apt-get install -y libpcap-dev
           cargo build -p jnnt --release --target x86_64-unknown-linux-gnu
 
+      # Cross build for ARM64 using the Cross.toml we created above
       - name: Build Linux ARM64
         run: |
-          cargo build -p jnnt --release --target aarch64-unknown-linux-gnu
+          cross build -p jnnt --release --target aarch64-unknown-linux-gnu
 
       - name: Prepare Linux binaries
         run: |
@@ -178,15 +177,10 @@ jobs:
       - name: Prepare lib/ folder structure for JSR
         run: |
           mkdir -p dist/lib-jsr
-          # Copy all binaries to lib/ with platform-specific names
-          # macOS: Create universal binary (will be done in release step if needed)
-          # For now, include both architectures - code will need to detect arch
           cp dist/libs/mac64/libjnnt.dylib dist/lib-jsr/jnnt-x86_64.dylib
           cp dist/libs/macA64/libjnnt.dylib dist/lib-jsr/jnnt-aarch64.dylib
-          # Linux: Include both architectures
           cp dist/libs/linux64/libjnnt.so dist/lib-jsr/jnnt-x86_64.so
           cp dist/libs/linuxA64/libjnnt.so dist/lib-jsr/jnnt-aarch64.so
-          # Windows
           cp dist/libs/win64/libjnnt.dll dist/lib-jsr/jnnt.dll
 
       - name: Create release archive
@@ -204,7 +198,6 @@ jobs:
             VERSION="${GITHUB_REF#refs/tags/}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Version: ${VERSION}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
