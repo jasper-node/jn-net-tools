@@ -40,6 +40,18 @@ deno add jsr:@controlx-io/jn-net-tools
 
 ## Build & Install
 
+### Option 1: Download Pre-built Binaries
+
+Download the latest pre-compiled binaries from GitHub Releases:
+
+```bash
+deno run --allow-net scripts/download_lib.ts
+```
+
+This will automatically download and extract the appropriate binaries for your platform.
+
+### Option 2: Build from Source
+
 1. **Clone the repository:**
 
 ```bash

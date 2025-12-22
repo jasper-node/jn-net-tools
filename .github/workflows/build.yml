@@ -181,13 +181,13 @@ jobs:
           # Copy all binaries to lib/ with platform-specific names
           # macOS: Create universal binary (will be done in release step if needed)
           # For now, include both architectures - code will need to detect arch
-          cp dist/libs/mac64/libjnnt.dylib dist/lib-jsr/libjnnt-x86_64.dylib
-          cp dist/libs/macA64/libjnnt.dylib dist/lib-jsr/libjnnt-aarch64.dylib
+          cp dist/libs/mac64/libjnnt.dylib dist/lib-jsr/jnnt-x86_64.dylib
+          cp dist/libs/macA64/libjnnt.dylib dist/lib-jsr/jnnt-aarch64.dylib
           # Linux: Include both architectures
-          cp dist/libs/linux64/libjnnt.so dist/lib-jsr/libjnnt-x86_64.so
-          cp dist/libs/linuxA64/libjnnt.so dist/lib-jsr/libjnnt-aarch64.so
+          cp dist/libs/linux64/libjnnt.so dist/lib-jsr/jnnt-x86_64.so
+          cp dist/libs/linuxA64/libjnnt.so dist/lib-jsr/jnnt-aarch64.so
           # Windows
-          cp dist/libs/win64/libjnnt.dll dist/lib-jsr/libjnnt.dll
+          cp dist/libs/win64/libjnnt.dll dist/lib-jsr/jnnt.dll
 
       - name: Create release archive
         run: |
@@ -215,11 +215,11 @@ jobs:
             Pre-compiled FFI binaries for all platforms.
 
             ## Binaries included:
-            - macOS (x86_64): `libjnnt-x86_64.dylib`
-            - macOS (aarch64): `libjnnt-aarch64.dylib`
-            - Linux (x86_64): `libjnnt-x86_64.so`
-            - Linux (aarch64): `libjnnt-aarch64.so`
-            - Windows (x86_64): `libjnnt.dll`
+            - macOS (x86_64): `jnnt-x86_64.dylib`
+            - macOS (aarch64): `jnnt-aarch64.dylib`
+            - Linux (x86_64): `jnnt-x86_64.so`
+            - Linux (aarch64): `jnnt-aarch64.so`
+            - Windows (x86_64): `jnnt.dll`
 
             Extract the archive and copy the appropriate binary to `lib/` folder:
             - macOS: Use `libjnnt-x86_64.dylib` or `libjnnt-aarch64.dylib` → rename to `libjnnt.dylib`
