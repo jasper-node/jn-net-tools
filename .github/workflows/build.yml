@@ -233,9 +233,9 @@ jobs:
             - Windows (x86_64): `jnnt.dll`
 
             Extract the archive and copy the appropriate binary to `lib/` folder:
-            - macOS: Use `libjnnt-x86_64.dylib` or `libjnnt-aarch64.dylib` → rename to `libjnnt.dylib`
-            - Linux: Use `libjnnt-x86_64.so` or `libjnnt-aarch64.so` → rename to `libjnnt.so`
-            - Windows: Use `libjnnt.dll` as-is
-          files: dist/lib-binaries.zip
+            - macOS: Use `jnnt-x86_64.dylib` or `jnnt-aarch64.dylib` → rename to `libjnnt.dylib`
+            - Linux: Use `jnnt-x86_64.so` or `jnnt-aarch64.so` → rename to `libjnnt.so`
+            - Windows: Use `jnnt.dll` → rename to `libjnnt.dll`
+          files: dist/lib-binaries.tar.gz
           draft: false
           prerelease: ${{ contains(steps.tag_version.outputs.version, '-') || contains(steps.tag_version.outputs.version, 'beta') || contains(steps.tag_version.outputs.version, 'alpha') }}
