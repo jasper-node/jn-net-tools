@@ -50,7 +50,7 @@ interface GitHubRelease {
   assets: GitHubAsset[];
 }
 
-async function main() {
+export async function downloadToLocalLib() {
   console.log(`Fetching latest release for ${REPO}...`);
   const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
     headers: {
@@ -85,5 +85,5 @@ async function main() {
 }
 
 if (import.meta.main) {
-  await main();
+  await downloadToLocalLib();
 }

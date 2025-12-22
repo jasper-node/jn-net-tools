@@ -11,3 +11,5 @@ export type {
   SniffResult,
   TraceRouteResult,
 } from "./jn_net_tools.ts";
+
+export { downloadToLocalLib } from "../scripts/download_lib.ts";

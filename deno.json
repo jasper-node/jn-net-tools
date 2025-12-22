@@ -61,23 +61,19 @@
     "json-stringify-pretty-compact": "npm:json-stringify-pretty-compact@4.0.0"
   },
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./scripts/download_lib": "./scripts/download_lib.ts"
   },
   "publish": {
     "include": [
       "./src/mod.ts",
       "./src/",
-      "./scripts/download-binaries.ts",
+      "./scripts/download_lib.ts",
       "./README.md"
     ],
     "exclude": [
-      "./ethercrab/",
-      "./src/tests/",
       "./src/__specs__/",
-      "./src/utils/__specs__/",
-      "./lib/libethercrab_ffi_dev.dylib",
-      "./lib/libethercrab_ffi_dev.so",
-      "./lib/libethercrab_ffi_dev.dll"
+      "./src_jnnt/"
     ]
   }
 }
