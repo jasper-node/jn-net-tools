@@ -110,7 +110,7 @@ pub extern "C" fn net_arp_scan(iface: *const c_char, timeout_ms: u32) -> *mut c_
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn net_sniff(iface: *const c_char, filter: *const c_char, duration_ms: u32, max_packets: i32) -> *mut c_char {
+pub extern "C" fn net_sniff(iface: *const c_char, filter: *const c_char, duration_ms: u32, max_packets: i32, include_data: u8) -> *mut c_char {
     let iface_str = unsafe {
         match CStr::from_ptr(iface).to_str() {
             Ok(s) => s,
@@ -135,7 +135,8 @@ pub extern "C" fn net_sniff(iface: *const c_char, filter: *const c_char, duratio
         }
     };
 
-    let result = sniff::capture::sniff_packets(iface_str, filter_str, duration_ms, max_packets);
+    let include_data_bool = include_data != 0;
+    let result = sniff::capture::sniff_packets(iface_str, filter_str, duration_ms, max_packets, include_data_bool);
     match CString::new(result) {
         Ok(cstr) => cstr.into_raw(),
         Err(_) => {

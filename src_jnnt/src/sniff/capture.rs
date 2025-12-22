@@ -32,11 +32,15 @@ pub struct SniffResult {
     pub error: Option<String>,
 }
 
-fn process_packet(packet: &[u8]) -> Option<PacketSummary> {
+fn process_packet(packet: &[u8], include_data: bool) -> Option<PacketSummary> {
     let ethernet = EthernetPacket::new(packet)?;
     
-    // Hex encode packet data
-    let data_hex = packet.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    // Hex encode packet data if requested
+    let data_hex = if include_data {
+        Some(packet.iter().map(|b| format!("{:02x}", b)).collect::<Vec<String>>().join(" "))
+    } else {
+        None
+    };
     
     let mut summary = PacketSummary {
         ts: format!("{:?}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()),
@@ -44,7 +48,7 @@ fn process_packet(packet: &[u8]) -> Option<PacketSummary> {
         dst: "".to_string(),
         proto: "Unknown".to_string(),
         info: "".to_string(),
-        data: Some(data_hex),
+        data: data_hex,
     };
 
     match ethernet.get_ethertype() {
@@ -164,7 +168,7 @@ fn matches_filter(packet: &PacketSummary, filter: &str) -> bool {
     }
 }
 
-pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packets: i32) -> String {
+pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packets: i32, include_data: bool) -> String {
     let interfaces = datalink::interfaces();
     let _iface = match interfaces.iter().find(|i| i.name == iface_name) {
         Some(i) => i,
@@ -218,7 +222,7 @@ pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packe
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             match tokio::time::timeout(remaining, tokio::io::AsyncReadExt::read(&mut socket, &mut buffer)).await {
                 Ok(Ok(n)) if n > 0 => {
-                    if let Some(summary) = process_packet(&buffer[..n]) {
+                    if let Some(summary) = process_packet(&buffer[..n], include_data) {
                         // Apply userspace filter
                         if matches_filter(&summary, filter) {
                             packets.push(summary);

@@ -1,6 +1,7 @@
 import {
   callFFIString,
   callFFIStringNullable,
+  encodeCString,
   type LoadedFFILibrary,
   loadFFILibrary,
 } from "./ffi.ts";
@@ -76,6 +77,7 @@ export interface PacketSummary {
   dst: string;
   proto: string;
   info: string;
+  data?: string;
 }
 
 export interface SniffResult {
@@ -224,26 +226,34 @@ export class JNNetTools {
     filter: string | null = null,
     durationMs = 5000,
     maxPackets = 100,
+    includeData = false,
   ): Promise<SniffResult> {
     this.ensureInitialized();
-    // net_sniff signature: (iface, filter, duration_ms, max_packets)
-    const ifaceCstr = new TextEncoder().encode(iface + "\0");
-    const ifacePtr = Deno.UnsafePointer.of(ifaceCstr);
+    // net_sniff signature: (iface, filter, duration_ms, max_packets, include_data)
+    const ifaceCstr = encodeCString(iface);
+    const ifacePtr = Deno.UnsafePointer.of(ifaceCstr as BufferSource);
     if (ifacePtr === null) {
       throw new Error("Failed to create interface C string");
     }
 
     let filterPtr: Deno.PointerValue | null = null;
     if (filter !== null) {
-      const filterCstr = new TextEncoder().encode(filter + "\0");
-      filterPtr = Deno.UnsafePointer.of(filterCstr);
+      const filterCstr = encodeCString(filter);
+      filterPtr = Deno.UnsafePointer.of(filterCstr as BufferSource);
     }
 
-    const resultPtr = await this.lib!.symbols.net_sniff(
+    const resultPtr = await (this.lib!.symbols.net_sniff as (
+      iface: Deno.PointerValue,
+      filter: Deno.PointerValue,
+      duration_ms: number,
+      max_packets: number,
+      include_data: number,
+    ) => Promise<Deno.PointerValue>)(
       ifacePtr,
       filterPtr,
       durationMs,
       maxPackets,
+      includeData ? 1 : 0,
     );
     if (resultPtr === null) {
       return { captured: 0, packets: [], error: "Failed to sniff" };
@@ -252,7 +262,10 @@ export class JNNetTools {
     const result = view.getCString();
     await this.lib!.symbols.free_string(resultPtr);
     const parsed = JSON.parse(result) as SniffResult;
-    if (Deno.build.os === "windows" && parsed.error && parsed.error.includes("not found")) {
+
+    if (
+      Deno.build.os === "windows" && parsed.error && parsed.error.includes("not found")
+    ) {
       parsed.error +=
         " (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)";
     }
@@ -266,14 +279,14 @@ export class JNNetTools {
     timeoutMs = 5000,
   ): Promise<PortCheckResult> {
     this.ensureInitialized();
-    const targetCstr = new TextEncoder().encode(target + "\0");
-    const targetPtr = Deno.UnsafePointer.of(targetCstr);
+    const targetCstr = encodeCString(target);
+    const targetPtr = Deno.UnsafePointer.of(targetCstr as BufferSource);
     if (targetPtr === null) {
       throw new Error("Failed to create target C string");
     }
 
-    const protoCstr = new TextEncoder().encode(proto + "\0");
-    const protoPtr = Deno.UnsafePointer.of(protoCstr);
+    const protoCstr = encodeCString(proto);
+    const protoPtr = Deno.UnsafePointer.of(protoCstr as BufferSource);
     if (protoPtr === null) {
       throw new Error("Failed to create proto C string");
     }
@@ -300,14 +313,14 @@ export class JNNetTools {
     durationMs = 10000,
   ): Promise<BandwidthResult> {
     this.ensureInitialized();
-    const targetCstr = new TextEncoder().encode(target + "\0");
-    const targetPtr = Deno.UnsafePointer.of(targetCstr);
+    const targetCstr = encodeCString(target);
+    const targetPtr = Deno.UnsafePointer.of(targetCstr as BufferSource);
     if (targetPtr === null) {
       throw new Error("Failed to create target C string");
     }
 
-    const protoCstr = new TextEncoder().encode(proto + "\0");
-    const protoPtr = Deno.UnsafePointer.of(protoCstr);
+    const protoCstr = encodeCString(proto);
+    const protoPtr = Deno.UnsafePointer.of(protoCstr as BufferSource);
     if (protoPtr === null) {
       throw new Error("Failed to create proto C string");
     }

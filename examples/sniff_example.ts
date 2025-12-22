@@ -10,8 +10,11 @@ const filter = Deno.args[1] || "tcp";
 
 console.log(`Sniffing on ${iface} with filter "${filter}"...`);
 try {
-  const result = await tools.sniff(iface, filter, 5000, 10);
+  const result = await tools.sniff(iface, filter, 3000, 5);
   console.log("Result:", stringify(result));
+
+  const result2 = await tools.sniff(iface, filter, 3000, 5, true);
+  console.log("Result with data:", stringify(result2));
 } catch (err) {
   console.error("Error:", err);
 }
