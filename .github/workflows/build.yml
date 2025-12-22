@@ -104,6 +104,24 @@ jobs:
           sudo apt-get update && sudo apt-get install -y libpcap-dev
           cargo build -p jnnt --release --target x86_64-unknown-linux-gnu
 
+      - name: Configure Cross for ARM64
+        run: |
+          cat > Cross.toml <<EOF
+          [target.aarch64-unknown-linux-gnu]
+          # Use the 'main' image tag which uses a newer Ubuntu version (usually 20.04+)
+          image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
+          
+          pre-build = [
+              "dpkg --add-architecture arm64",
+              "apt-get update && apt-get install -y libpcap-dev:arm64"
+          ]
+
+          [target.aarch64-unknown-linux-gnu.env]
+          # Ensure pkg-config looks at the ARM64 libraries we just installed
+          PKG_CONFIG_PATH = "/usr/lib/aarch64-linux-gnu/pkgconfig"
+          PKG_CONFIG_ALLOW_CROSS = "1"
+          EOF
+
       # Cross build for ARM64 using the Cross.toml we created above
       - name: Build Linux ARM64
         run: |
