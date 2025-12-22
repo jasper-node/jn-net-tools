@@ -100,7 +100,11 @@ jobs:
       - name: Install cross-compilation dependencies
         run: |
           sudo dpkg --add-architecture arm64
+          # Update package lists (allow partial failures - security repo doesn't have arm64 packages)
+          set +e
           sudo apt-get update
+          set -e
+          # Install cross-compilation tools and libraries (available in main archive)
           sudo apt-get install -y gcc-aarch64-linux-gnu libpcap-dev libpcap-dev:arm64
 
       - name: Build Linux x86_64

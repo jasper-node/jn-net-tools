@@ -45,35 +45,42 @@ impl WindowsRawSocket {
         let capture_clone = capture.clone();
         let rx_task = tokio::task::spawn_blocking(move || {
             loop {
-                let packet_result = {
+                let packet_data = {
                     let mut cap_guard = match capture_clone.lock() {
                         Ok(guard) => guard,
                         Err(_) => break, // Mutex poisoned, exit
                     };
-                    let result = cap_guard.next_packet();
-                    drop(cap_guard); // Explicitly drop guard before using result
-                    result
-                };
-
-                match packet_result {
-                    Ok(packet) => {
-                        let data = packet.data.to_vec();
-                        if tx.send(data).is_err() {
-                            // Receiver dropped, exit
-                            break;
+                    
+                    // Extract data while guard is alive, since Packet borrows from Capture
+                    match cap_guard.next_packet() {
+                        Ok(packet) => Some(packet.data.to_vec()),
+                        Err(e) => {
+                            // Drop guard before handling error
+                            drop(cap_guard);
+                            match e {
+                                pcap::Error::NoMorePackets => {
+                                    // No packets available, yield to avoid busy-waiting
+                                    std::thread::yield_now();
+                                    continue;
+                                }
+                                pcap::Error::TimeoutExpired => {
+                                    // Timeout, continue
+                                    continue;
+                                }
+                                e => {
+                                    // Error occurred, log and break
+                                    eprintln!("Packet receive error: {}", e);
+                                    break;
+                                }
+                            }
                         }
                     }
-                    Err(pcap::Error::NoMorePackets) => {
-                        // No packets available, yield to avoid busy-waiting
-                        std::thread::yield_now();
-                    }
-                    Err(pcap::Error::TimeoutExpired) => {
-                        // Timeout, continue
-                        continue;
-                    }
-                    Err(e) => {
-                        // Error occurred, log and continue or break
-                        eprintln!("Packet receive error: {}", e);
+                };
+
+                // Now we can use the packet data (owned Vec) without the guard
+                if let Some(data) = packet_data {
+                    if tx.send(data).is_err() {
+                        // Receiver dropped, exit
                         break;
                     }
                 }
