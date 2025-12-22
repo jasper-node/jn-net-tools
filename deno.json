@@ -1,6 +1,6 @@
 {
   "name": "@controlx-io/jn-net-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A high-performance network diagnostic library for Deno, featuring a Rust backend for raw socket operations.",
   "tasks": {
     "lint": "deno lint --ignore='**/*_test.ts,**/*.test.ts,**/tests/**'",
