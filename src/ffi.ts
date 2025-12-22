@@ -1,3 +1,16 @@
+// Reusable TextEncoder/TextDecoder instances to avoid repeated instantiation
+const ENCODER = new TextEncoder();
+const DECODER = new TextDecoder();
+
+/**
+ * Encode a string as a null-terminated C string (Uint8Array).
+ * @param str - String to encode
+ * @returns Encoded bytes with null terminator
+ */
+export function encodeCString(str: string): Uint8Array {
+  return ENCODER.encode(str + "\0");
+}
+
 export interface FFILibrary {
   net_ping: (
     target: Deno.PointerValue,
@@ -17,6 +30,7 @@ export interface FFILibrary {
     filter: Deno.PointerValue,
     duration_ms: number,
     max_packets: number,
+    include_data: number,
   ) => Promise<Deno.PointerValue>;
   net_check_port: (
     target: Deno.PointerValue,
@@ -100,7 +114,7 @@ export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrar
       const { success, stderr } = await downloadCmd.output();
       if (!success) {
         throw new Error(
-          `Failed to download library: ${new TextDecoder().decode(stderr)}`,
+          `Failed to download library: ${DECODER.decode(stderr)}`,
         );
       }
       console.log("✅ Library downloaded successfully");
@@ -147,7 +161,7 @@ export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrar
       nonblocking: true,
     },
     net_sniff: {
-      parameters: ["pointer", "pointer", "u32", "i32"],
+      parameters: ["pointer", "pointer", "u32", "i32", "u8"],
       result: "pointer",
       nonblocking: true,
     },
@@ -198,8 +212,8 @@ export async function callFFIString<T extends unknown[]>(
   str: string,
   ...args: T
 ): Promise<string> {
-  const cstr = new TextEncoder().encode(str + "\0");
-  const ptr = Deno.UnsafePointer.of(cstr);
+  const cstr = encodeCString(str);
+  const ptr = Deno.UnsafePointer.of(cstr as BufferSource);
   if (ptr === null) {
     throw new Error("Failed to create C string");
   }
@@ -223,29 +237,34 @@ export async function callFFIStringNullable(
   str: string,
   ...args: (string | null | number | Deno.PointerValue)[]
 ): Promise<string> {
-  const enc = new TextEncoder();
-  const cstr = enc.encode(str + "\0");
-  const ptr = Deno.UnsafePointer.of(cstr);
+  const cstr = encodeCString(str);
+  const ptr = Deno.UnsafePointer.of(cstr as BufferSource);
   if (ptr === null) {
     throw new Error("Failed to create C string");
   }
 
-  // Keep references to buffers to prevent GC
+  // Keep references to buffers to prevent GC during async FFI call
+  // Using a closure that references the buffers ensures they stay alive
   const buffers: Uint8Array[] = [cstr];
 
   const processedArgs = args.map((arg) => {
     if (typeof arg === "string") {
-      const buf = enc.encode(arg + "\0");
+      const buf = encodeCString(arg);
       buffers.push(buf);
-      return Deno.UnsafePointer.of(buf);
+      return Deno.UnsafePointer.of(buf as BufferSource);
     } else if (arg === null) {
       return null;
     }
     return arg;
   });
 
+  // Create a closure that keeps buffers alive - V8 cannot optimize this away
+  const keepAlive = () => buffers.length;
+
   try {
     const resultPtr = await fn(ptr, ...processedArgs);
+    // Ensure buffers are still referenced during the async operation
+    keepAlive();
     if (resultPtr === null) {
       return "";
     }
@@ -253,7 +272,8 @@ export async function callFFIStringNullable(
     await lib.free_string(resultPtr);
     return result;
   } finally {
-    // Keep buffers alive
-    buffers.forEach((b) => b);
+    // Explicitly keep buffers alive until function returns
+    // The closure reference ensures GC doesn't collect them prematurely
+    void keepAlive();
   }
 }

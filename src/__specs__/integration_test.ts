@@ -309,9 +309,11 @@ Deno.test({
     }
 
     const toolsInstance = await ensureToolsInitialized();
-    // Sniff for 500ms
-    console.log(`Sniff: interface ${onlineInterface.name} (500ms, max 10 packets, no filter)`);
-    const result = await toolsInstance.sniff(onlineInterface.name, "", 500, 10);
+    // Sniff for 500ms without data
+    console.log(
+      `Sniff: interface ${onlineInterface.name} (500ms, max 10 packets, no filter, no data)`,
+    );
+    const result = await toolsInstance.sniff(onlineInterface.name, "", 500, 10, false);
 
     // Enforce success (requires root)
     if (result.error) {
@@ -327,6 +329,53 @@ Deno.test({
     assertEquals(Array.isArray(result.packets), true);
     assertEquals(result.packets.length > 0, true, "Expected at least one packet captured");
     console.log(`  Captured: ${result.captured} packets, Packets array: ${result.packets.length}`);
+
+    // Verify that packets don't have data field when includeData is false
+    for (const packet of result.packets) {
+      assertEquals(packet.data, undefined, "Expected no data field when includeData is false");
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "test_sniff_with_data",
+  fn: async () => {
+    if (!onlineInterface) {
+      throw new Error("Sniff with data failed: No interface found");
+    }
+
+    const toolsInstance = await ensureToolsInitialized();
+    // Sniff for 500ms with data
+    console.log(
+      `Sniff: interface ${onlineInterface.name} (500ms, max 10 packets, no filter, with data)`,
+    );
+    const result = await toolsInstance.sniff(onlineInterface.name, "", 500, 10, true);
+
+    // Enforce success (requires root)
+    if (result.error) {
+      throw new Error(`Sniff with data failed: ${result.error}`);
+    }
+
+    assertEquals(Array.isArray(result.packets), true);
+    assertEquals(result.packets.length > 0, true, "Expected at least one packet captured");
+    console.log(`  Captured: ${result.captured} packets, Packets array: ${result.packets.length}`);
+
+    // Verify that packets have data field when includeData is true
+    for (const packet of result.packets) {
+      assertExists(packet.data, "Expected data field when includeData is true");
+      assertEquals(typeof packet.data, "string", "Expected data to be a hex string");
+      assertEquals(packet.data.length > 0, true, "Expected non-empty data");
+      // Verify it's a valid hex string with spaces (e.g. "aa bb cc")
+      assertEquals(
+        /^[0-9a-f ]+$/i.test(packet.data),
+        true,
+        "Expected valid hex characters and spaces",
+      );
+      // Check strict format: 2 hex digits followed by optional space
+      assertEquals(/^([0-9a-f]{2}( |$))+$/i.test(packet.data), true, "Expected format 'XX XX XX'");
+      console.log(`    Packet ${packet.proto}: data length ${packet.data.length} chars`);
+    }
   },
   sanitizeResources: false,
 });
