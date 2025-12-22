@@ -63,6 +63,7 @@ Deno.test({
     const result = await toolsInstance.getInterfaces();
     assertExists(result, "Expected array of interfaces");
     assertEquals(Array.isArray(result), true, "Expected array of interfaces");
+    assertEquals(result.length > 0, true, "Expected at least one interface");
   },
   sanitizeResources: false,
 });
@@ -132,10 +133,9 @@ Deno.test({
     console.log(`Ping: ${target} (1 packet, 1000ms timeout)`);
     const result = await toolsInstance.ping(target, 1, 1000);
 
-    // Skip test if root privileges are required (raw ICMP sockets need root)
+    // Fail if root privileges are required
     if (result.error && result.error.includes("root privileges")) {
-      console.log("  Skipping: requires root privileges for raw ICMP sockets");
-      return;
+      throw new Error(`Ping failed: ${result.error}`);
     }
 
     if (result.error) {
@@ -144,6 +144,8 @@ Deno.test({
 
     assertEquals(typeof result.target, "string");
     assertEquals(Array.isArray(result.packets), true);
+    assertEquals(result.alive, true, "Expected target to be alive");
+    assertEquals(result.packets.length > 0, true, "Expected at least one packet");
     console.log(
       `  Target: ${result.target}, Alive: ${result.alive}, Loss: ${result.loss_percent}%, Avg RTT: ${result.avg_rtt_ms}ms`,
     );
@@ -156,13 +158,12 @@ Deno.test({
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
     const target = "8.8.8.8";
-    console.log(`Trace route: ${target} (max 1 hop, 1000ms timeout)`);
-    const result = await toolsInstance.traceRoute(target, 1, 1000);
+    console.log(`Trace route: ${target} (max 30 hops, 3000ms timeout)`);
+    const result = await toolsInstance.traceRoute(target, 30, 3000);
 
-    // Skip test if root privileges are required (raw ICMP sockets need root)
+    // Fail if root privileges are required
     if (result.error && result.error.includes("root privileges")) {
-      console.log("  Skipping: requires root privileges for raw ICMP sockets");
-      return;
+      throw new Error(`Trace Route failed: ${result.error}`);
     }
 
     if (result.error) {
@@ -171,6 +172,7 @@ Deno.test({
 
     assertEquals(typeof result.target, "string");
     assertEquals(Array.isArray(result.hops), true);
+    assertEquals(result.hops.length > 1, true, "Expected more than 1 hop");
     console.log(`  Target: ${result.target}, Hops: ${result.hops.length}`);
   },
   sanitizeResources: false,
@@ -183,14 +185,25 @@ Deno.test({
     const target = "8.8.8.8";
     console.log(`MTR: ${target} (1000ms duration)`);
     const result = await toolsInstance.mtr(target, 1000);
+    // console.log("MTR Result:", JSON.stringify(result));
 
-    // Enforce success (requires root)
+    // Fail if root privileges are required
+    if (result.error && result.error.includes("root privileges")) {
+      throw new Error(`MTR failed: ${result.error} (root privileges required)`);
+    }
+
+    // On some systems MTR might return 0 hops if no root without an explicit error
+    if (result.hops.length === 0 && !result.error) {
+      throw new Error("MTR failed: returned 0 hops (likely requires root privileges)");
+    }
+
     if (result.error) {
       throw new Error(`MTR failed: ${result.error}`);
     }
 
     assertEquals(typeof result.target, "string");
     assertEquals(Array.isArray(result.hops), true);
+    assertEquals(result.hops.length > 1, true, "Expected more than 1 hop");
     console.log(`  Target: ${result.target}, Hops: ${result.hops.length}`);
     const firstHop = result.hops[0];
     if (firstHop) {
@@ -216,15 +229,21 @@ Deno.test({
       assertEquals(result.port, 80);
       console.log(`  Port ${result.port}: OPEN`);
     } else {
-      // Fallback to 8.8.8.8:53
+      // Fallback to 8.8.8.8:53 (which should be open)
       const host2 = "8.8.8.8";
       const port2 = 53;
       console.log(`  Port ${port1}: CLOSED, trying ${host2}:${port2}`);
       result = await toolsInstance.checkPort(host2, port2, "tcp", 2000);
+      assertEquals(result.open, true, `Expected port ${port2} on ${host2} to be open`);
       console.log(`  Port ${result.port}: ${result.open ? "OPEN" : "CLOSED"}`);
 
-      // Ensure checking actually happened
-      assertEquals(typeof result.open, "boolean");
+      // Now check a port that should be closed
+      const host3 = "8.8.8.8";
+      const port3 = 54;
+      console.log(`  Trying known CLOSED port ${host3}:${port3}`);
+      const result3 = await toolsInstance.checkPort(host3, port3, "tcp", 1000);
+      assertEquals(result3.open, false, `Expected port ${port3} on ${host3} to be closed`);
+      console.log(`  Port ${result3.port}: ${result3.open ? "OPEN" : "CLOSED"}`);
     }
   },
   sanitizeResources: false,
@@ -241,6 +260,7 @@ Deno.test({
     const result = await toolsInstance.bandwidth(host, port, "tcp", 500);
     assertEquals(typeof result.target, "string");
     assertEquals(typeof result.throughput_mbps, "number");
+    assertEquals(result.throughput_mbps > 0, true, "Expected non-zero throughput");
     console.log(
       `  Target: ${result.target}:${result.port}, Throughput: ${
         result.throughput_mbps.toFixed(2)
@@ -275,11 +295,7 @@ Deno.test({
 
     assertEquals(Array.isArray(result.devices), true);
     console.log(`  Interface: ${result.interface}, Devices found: ${result.devices.length}`);
-    if (result.devices.length === 0) {
-      throw new Error(
-        `ARP Scan found 0 devices on interface ${result.interface}. Expected at least 1 device.`,
-      );
-    }
+    assertEquals(result.devices.length > 0, true, "Expected at least 1 device found in ARP scan");
   },
   sanitizeResources: false,
 });
@@ -309,7 +325,24 @@ Deno.test({
     }
 
     assertEquals(Array.isArray(result.packets), true);
+    assertEquals(result.packets.length > 0, true, "Expected at least one packet captured");
     console.log(`  Captured: ${result.captured} packets, Packets array: ${result.packets.length}`);
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "test_whois",
+  fn: async () => {
+    const toolsInstance = await ensureToolsInitialized();
+    console.log("Whois lookup: google.com");
+    const result = await toolsInstance.whois("google.com");
+    if (result.error) {
+      throw new Error(`Whois failed: ${result.error}`);
+    }
+    assertExists(result.data);
+    assertEquals(result.data!.length > 0, true, "Expected non-empty whois data");
+    console.log(`  Data length: ${result.data!.length} chars`);
   },
   sanitizeResources: false,
 });
