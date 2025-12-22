@@ -56,8 +56,8 @@ impl LinuxRawSocket {
         
         unsafe {
             std::ptr::copy_nonoverlapping(
-                c_str.as_ptr(),
-                ifreq.ifr_name.as_mut_ptr() as *mut i8,
+                c_str.as_ptr() as *const _,
+                ifreq.ifr_name.as_mut_ptr() as *mut _,
                 interface.len().min(15),
             );
         }
@@ -106,7 +106,7 @@ impl LinuxRawSocket {
         // Use pcap to compile the filter into BPF bytecode
         // We need to get the interface name from ifreq
         let iface_name = unsafe {
-            std::ffi::CStr::from_ptr(self.ifreq.ifr_name.as_ptr() as *const i8)
+            std::ffi::CStr::from_ptr(self.ifreq.ifr_name.as_ptr() as *const libc::c_char)
         };
         
         let iface_str = iface_name.to_str()
@@ -121,8 +121,6 @@ impl LinuxRawSocket {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to compile filter '{}': {}", filter, e)))?;
 
         // Get the raw BPF program
-        let bpf_program = program.get_fcode();
-        
         // Linux uses sock_fprog structure for SO_ATTACH_FILTER
         #[repr(C)]
         struct sock_fprog {
@@ -131,8 +129,8 @@ impl LinuxRawSocket {
         }
 
         let prog = sock_fprog {
-            len: bpf_program.total_len as libc::c_ushort,
-            filter: bpf_program.insns as *const libc::sock_filter,
+            len: program.len() as libc::c_ushort,
+            filter: program.as_ptr() as *const libc::sock_filter,
         };
 
         unsafe {
