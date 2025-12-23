@@ -1,9 +1,5 @@
 import { assertEquals } from "@std/assert";
-import {
-  getFiltersByCategory,
-  getSupportedFilters,
-  isValidFilter,
-} from "../filters.ts";
+import { getFiltersByCategory, getSupportedFilters, isValidFilter } from "../filters.ts";
 
 Deno.test({
   name: "getSupportedFilters returns expected array",
@@ -168,4 +164,3 @@ Deno.test({
     assertEquals(isValidFilter("  host   1.1.1.1  "), true);
   },
 });
-
