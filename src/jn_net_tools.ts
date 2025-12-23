@@ -210,6 +210,32 @@ export class JNNetTools {
     return JSON.parse(result) as InterfaceInfo[];
   }
 
+  async getDefaultInterface(): Promise<InterfaceInfo | null> {
+    this.ensureInitialized();
+
+    // Get the local IP used for internet access
+    const resultPtr = await this.lib!.symbols.net_get_default_local_ip();
+    if (resultPtr === null) {
+      return null;
+    }
+    const view = new Deno.UnsafePointerView(resultPtr);
+    const result = view.getCString();
+    await this.lib!.symbols.free_string(resultPtr);
+
+    const parsed = JSON.parse(result) as { local_ip: string; error?: string };
+    if (parsed.error || !parsed.local_ip) {
+      return null;
+    }
+
+    // Get all network interfaces
+    const interfaces = await this.getNetworkInterfaces();
+
+    // Find the interface that has this IP
+    const defaultInterface = interfaces.find((iface) => iface.ips.includes(parsed.local_ip));
+
+    return defaultInterface || null;
+  }
+
   async getNetworkInterfaces(): Promise<InterfaceInfo[]> {
     this.ensureInitialized();
 
@@ -228,7 +254,7 @@ export class JNNetTools {
         nameLower.includes("-filter") ||
         nameLower.includes("-npcap") ||
         nameLower.includes("-virtualbox") ||
-        nameLower.includes("-twinCAT") ||
+        nameLower.includes("-twincat") ||
         nameLower.includes("-native wifi") ||
         nameLower.includes("-virtual wifi") ||
         descLower.includes("filter") ||
@@ -238,7 +264,10 @@ export class JNNetTools {
         descLower.includes("tunneling") ||
         descLower.includes("6to4") ||
         descLower.includes("teredo") ||
-        descLower.includes("ip-https")
+        descLower.includes("ip-https") ||
+        // Filter out specific redundant interfaces
+        descLower.includes("wi-fi direct") ||
+        descLower.includes("kernel debug")
       );
     };
 

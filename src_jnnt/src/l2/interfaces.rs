@@ -527,3 +527,57 @@ pub fn get_interfaces() -> String {
     serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct DefaultLocalIpResult {
+    pub local_ip: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub fn get_default_local_ip() -> String {
+    use std::net::UdpSocket;
+    
+    // Connect to a public IP to determine which local interface is used
+    // We use UDP and don't actually send data - just connect to get the local address
+    match UdpSocket::bind("0.0.0.0:0") {
+        Ok(socket) => {
+            // Try to connect to a public DNS server (8.8.8.8:53)
+            // This doesn't send data, but it tells the OS to route through the default interface
+            match socket.connect("8.8.8.8:53") {
+                Ok(_) => {
+                    match socket.local_addr() {
+                        Ok(addr) => {
+                            let result = DefaultLocalIpResult {
+                                local_ip: addr.ip().to_string(),
+                                error: None,
+                            };
+                            serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
+                        }
+                        Err(e) => {
+                            let result = DefaultLocalIpResult {
+                                local_ip: String::new(),
+                                error: Some(format!("Failed to get local address: {}", e)),
+                            };
+                            serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
+                        }
+                    }
+                }
+                Err(e) => {
+                    let result = DefaultLocalIpResult {
+                        local_ip: String::new(),
+                        error: Some(format!("Failed to connect to determine default interface: {}", e)),
+                    };
+                    serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
+                }
+            }
+        }
+        Err(e) => {
+            let result = DefaultLocalIpResult {
+                local_ip: String::new(),
+                error: Some(format!("Failed to bind socket: {}", e)),
+            };
+            serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
+        }
+    }
+}
+

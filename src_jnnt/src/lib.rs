@@ -100,6 +100,18 @@ pub extern "C" fn net_get_interface_details() -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn net_get_default_local_ip() -> *mut c_char {
+    let result = l2::interfaces::get_default_local_ip();
+    match CString::new(result) {
+        Ok(cstr) => cstr.into_raw(),
+        Err(_) => {
+            let err = CString::new(r#"{"error":"Failed to create result string"}"#).unwrap();
+            err.into_raw()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn net_arp_scan(iface: *const c_char, timeout_ms: u32) -> *mut c_char {
     let iface_str = unsafe {
         match CStr::from_ptr(iface).to_str() {

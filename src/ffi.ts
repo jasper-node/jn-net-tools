@@ -25,6 +25,7 @@ export interface FFILibrary {
   net_mtr: (target: Deno.PointerValue, duration_ms: number) => Promise<Deno.PointerValue>;
   net_get_interfaces: () => Promise<Deno.PointerValue>;
   net_get_interface_details: () => Promise<Deno.PointerValue>;
+  net_get_default_local_ip: () => Promise<Deno.PointerValue>;
   net_arp_scan: (iface: Deno.PointerValue, timeout_ms: number) => Promise<Deno.PointerValue>;
   net_sniff: (
     iface: Deno.PointerValue,
@@ -157,6 +158,11 @@ export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrar
       nonblocking: true,
     },
     net_get_interface_details: {
+      parameters: [],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_get_default_local_ip: {
       parameters: [],
       result: "pointer",
       nonblocking: true,
