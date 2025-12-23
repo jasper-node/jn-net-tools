@@ -1,7 +1,6 @@
 use pnet::datalink;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashMap;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
@@ -45,8 +44,8 @@ pub struct InterfaceDetail {
 }
 
 #[cfg(target_os = "windows")]
-fn get_windows_interface_info() -> HashMap<String, (String, bool)> {
-    let mut map = HashMap::new();
+fn get_windows_interface_info() -> std::collections::HashMap<String, (String, bool)> {
+    let mut map = std::collections::HashMap::new();
     
     unsafe {
         let mut buffer_size = 0u32;
