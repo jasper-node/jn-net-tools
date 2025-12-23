@@ -3,13 +3,15 @@ use serde_json;
 #[cfg(not(target_os = "windows"))]
 use libc;
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
+#[cfg(not(target_os = "windows"))]
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Networking::WinSock as winsock;
+use windows_sys::Win32::NetworkManagement::IpHelper as iphlp;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HopStats {
@@ -32,6 +34,7 @@ pub struct MtrResult {
     pub error: Option<String>,
 }
 
+#[cfg(not(target_os = "windows"))]
 fn create_icmp_echo_request(seq: u16, id: u16) -> Vec<u8> {
     const PAYLOAD_SIZE: usize = 32;
     let mut packet = vec![0u8; 8 + PAYLOAD_SIZE];
@@ -68,6 +71,7 @@ fn create_icmp_echo_request(seq: u16, id: u16) -> Vec<u8> {
     packet
 }
 
+#[cfg(not(target_os = "windows"))]
 fn extract_ip_from_ip_header(buf: &[u8]) -> Option<Ipv4Addr> {
     if buf.len() < 20 {
         return None;
@@ -76,6 +80,7 @@ fn extract_ip_from_ip_header(buf: &[u8]) -> Option<Ipv4Addr> {
     Some(Ipv4Addr::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]))
 }
 
+#[cfg(not(target_os = "windows"))]
 fn parse_icmp_response(buf: &[u8], expected_id: u16, expected_seq: u16) -> Option<(u8, Ipv4Addr)> {
     if buf.len() < 28 {
         return None;
@@ -145,7 +150,179 @@ fn parse_icmp_response(buf: &[u8], expected_id: u16, expected_seq: u16) -> Optio
     None
 }
 
+#[cfg(target_os = "windows")]
 pub fn mtr(target: &str, duration_ms: u32) -> String {
+    mtr_windows(target, duration_ms)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn mtr(target: &str, duration_ms: u32) -> String {
+    mtr_unix(target, duration_ms)
+}
+
+#[cfg(target_os = "windows")]
+fn mtr_windows(target: &str, duration_ms: u32) -> String {
+    let target_ip: Ipv4Addr = match crate::core::dns::resolve_v4(target) {
+        Ok(ip) => ip,
+        Err(e) => {
+            let result = MtrResult {
+                target: target.to_string(),
+                hops: vec![],
+                error: Some(e),
+            };
+            return serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string());
+        }
+    };
+
+    let duration = Duration::from_millis(duration_ms as u64);
+    let stats: Arc<Mutex<HashMap<i32, HopStats>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    // Spawn thread for continuous probing
+    let stats_clone = Arc::clone(&stats);
+    let target_ip_clone = target_ip;
+
+    let handle = thread::spawn(move || {
+        // Create ICMP handle
+        let icmp_handle = unsafe { iphlp::IcmpCreateFile() };
+        if icmp_handle == 0 || icmp_handle == -1isize {
+            return;
+        }
+
+        let start = Instant::now();
+        let mut last_latencies: HashMap<i32, f64> = HashMap::new();
+
+        // Prepare send data and reply buffer
+        let send_data = vec![0u8; 32];
+        let reply_size = std::mem::size_of::<iphlp::ICMP_ECHO_REPLY>() + send_data.len() + 8;
+        let mut reply_buffer = vec![0u8; reply_size];
+
+        let dest_addr = u32::from_ne_bytes(target_ip_clone.octets());
+        let timeout_ms = 1000u32;
+
+        let mut max_ttl_reached = 1i32;
+
+        while start.elapsed() < duration {
+            for ttl in 1i32..=max_ttl_reached.min(30) {
+                if start.elapsed() >= duration {
+                    break;
+                }
+
+                let probe_start = Instant::now();
+
+                // Set IP options with TTL
+                let mut ip_options = iphlp::IP_OPTION_INFORMATION {
+                    Ttl: ttl as u8,
+                    Tos: 0,
+                    Flags: 0,
+                    OptionsSize: 0,
+                    OptionsData: std::ptr::null_mut(),
+                };
+
+                let result = unsafe {
+                    iphlp::IcmpSendEcho(
+                        icmp_handle,
+                        dest_addr,
+                        send_data.as_ptr() as *const _,
+                        send_data.len() as u16,
+                        &mut ip_options,
+                        reply_buffer.as_mut_ptr() as *mut _,
+                        reply_size as u32,
+                        timeout_ms,
+                    )
+                };
+
+                let mut stats_guard = stats_clone.lock().unwrap();
+                let hop_stat = stats_guard.entry(ttl).or_insert_with(|| HopStats {
+                    hop: ttl,
+                    ip: "*".to_string(),
+                    sent: 0,
+                    received: 0,
+                    loss_percent: 0.0,
+                    avg_latency_ms: 0.0,
+                    min_latency_ms: 0.0,
+                    max_latency_ms: 0.0,
+                    jitter_ms: 0.0,
+                });
+
+                hop_stat.sent += 1;
+
+                if result > 0 {
+                    let reply = unsafe { &*(reply_buffer.as_ptr() as *const iphlp::ICMP_ECHO_REPLY) };
+                    let reply_addr = Ipv4Addr::from(reply.Address.to_ne_bytes());
+                    let status = reply.Status;
+
+                    // Status 0 = Success (reached destination)
+                    // Status 11010 (0x2B02) = TTL expired (TIME_EXCEEDED)
+                    if status == 0 || status == 11010 {
+                        let latency = probe_start.elapsed().as_millis() as f64;
+                        
+                        hop_stat.ip = reply_addr.to_string();
+                        hop_stat.received += 1;
+
+                        // Update latency stats
+                        if hop_stat.min_latency_ms == 0.0 || latency < hop_stat.min_latency_ms {
+                            hop_stat.min_latency_ms = latency;
+                        }
+                        if latency > hop_stat.max_latency_ms {
+                            hop_stat.max_latency_ms = latency;
+                        }
+
+                        // Calculate jitter
+                        if let Some(&last_latency) = last_latencies.get(&ttl) {
+                            let jitter = (latency - last_latency).abs();
+                            hop_stat.jitter_ms = (hop_stat.jitter_ms + jitter) / 2.0;
+                        }
+                        last_latencies.insert(ttl, latency);
+
+                        // Update average
+                        let total_latency = hop_stat.avg_latency_ms * (hop_stat.received - 1) as f64 + latency;
+                        hop_stat.avg_latency_ms = total_latency / hop_stat.received as f64;
+
+                        // If we reached destination, update max_ttl_reached
+                        if status == 0 && reply_addr == target_ip_clone && ttl > max_ttl_reached {
+                            max_ttl_reached = ttl;
+                        }
+                    }
+                }
+
+                // Update loss percentage
+                hop_stat.loss_percent = ((hop_stat.sent - hop_stat.received) as f64 / hop_stat.sent as f64) * 100.0;
+
+                drop(stats_guard);
+
+                // Small delay between probes
+                thread::sleep(Duration::from_millis(10));
+            }
+
+            // Increment max_ttl if we haven't found the destination yet
+            if max_ttl_reached < 30 {
+                max_ttl_reached += 1;
+            }
+        }
+
+        unsafe {
+            iphlp::IcmpCloseHandle(icmp_handle);
+        }
+    });
+
+    handle.join().unwrap();
+
+    // Collect results
+    let stats_guard = stats.lock().unwrap();
+    let mut hops: Vec<HopStats> = stats_guard.values().cloned().collect();
+    hops.sort_by_key(|h| h.hop);
+
+    let result = MtrResult {
+        target: target.to_string(),
+        hops,
+        error: None,
+    };
+
+    serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn mtr_unix(target: &str, duration_ms: u32) -> String {
     let target_ip: Ipv4Addr = match crate::core::dns::resolve_v4(target) {
         Ok(ip) => ip,
         Err(e) => {
@@ -169,40 +346,20 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
     let target_addr_clone = target_addr;
     let handle = thread::spawn(move || {
         // Create raw socket for ICMP
-        #[cfg(target_os = "windows")]
-        let sockfd = unsafe { winsock::socket(winsock::AF_INET as i32, winsock::SOCK_RAW as i32, winsock::IPPROTO_ICMP as i32) };
-        #[cfg(not(target_os = "windows"))]
         let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP) };
 
-        #[cfg(target_os = "windows")]
-        if sockfd == winsock::INVALID_SOCKET {
-            return;
-        }
-        #[cfg(not(target_os = "windows"))]
         if sockfd < 0 {
             return;
         }
 
         // Set socket timeout
         let timeout = Duration::from_millis(1000);
-        #[cfg(target_os = "windows")]
-        let timeout_val: u32 = timeout.as_millis() as u32;
-        #[cfg(not(target_os = "windows"))]
         let timeout_tv = libc::timeval {
             tv_sec: timeout.as_secs() as _,
             tv_usec: timeout.subsec_micros() as _,
         };
 
         unsafe {
-            #[cfg(target_os = "windows")]
-            winsock::setsockopt(
-                sockfd as _,
-                winsock::SOL_SOCKET as i32,
-                winsock::SO_RCVTIMEO as i32,
-                &timeout_val as *const _ as *const u8,
-                std::mem::size_of::<u32>() as i32,
-            );
-            #[cfg(not(target_os = "windows"))]
             libc::setsockopt(
                 sockfd,
                 libc::SOL_SOCKET,
@@ -212,31 +369,11 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
             );
         }
 
-        #[cfg(target_os = "windows")]
-        let mut sockaddr: winsock::SOCKADDR_IN = unsafe { std::mem::zeroed() };
-        #[cfg(not(target_os = "windows"))]
         let mut sockaddr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-
-        #[cfg(target_os = "windows")]
-        {
-            sockaddr.sin_family = winsock::AF_INET as _;
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            sockaddr.sin_family = libc::AF_INET as _;
-        }
+        sockaddr.sin_family = libc::AF_INET as _;
+        
         if let std::net::SocketAddr::V4(addr) = target_addr_clone {
-            #[cfg(target_os = "windows")]
-            {
-                let ip_u32 = u32::from_ne_bytes(addr.ip().octets());
-                unsafe {
-                    std::ptr::write(&mut sockaddr.sin_addr as *mut _ as *mut u32, ip_u32);
-                }
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                sockaddr.sin_addr.s_addr = u32::from_ne_bytes(addr.ip().octets());
-            }
+            sockaddr.sin_addr.s_addr = u32::from_ne_bytes(addr.ip().octets());
         }
         sockaddr.sin_port = 0;
 
@@ -254,15 +391,6 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
                 // Set TTL for this hop
                 let ttl_val = ttl as i32;
                 unsafe {
-                    #[cfg(target_os = "windows")]
-                    winsock::setsockopt(
-                        sockfd as _,
-                        winsock::IPPROTO_IP as i32,
-                        winsock::IP_TTL as i32,
-                        &ttl_val as *const _ as *const u8,
-                        std::mem::size_of::<i32>() as i32,
-                    );
-                    #[cfg(not(target_os = "windows"))]
                     libc::setsockopt(
                         sockfd,
                         libc::IPPROTO_IP,
@@ -278,56 +406,28 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
 
                 // Send packet
                 let send_res = unsafe {
-                    #[cfg(target_os = "windows")]
-                    {
-                        winsock::sendto(
-                            sockfd as _,
-                            packet.as_ptr() as *const u8,
-                            packet.len() as i32,
-                            0,
-                            &sockaddr as *const _ as *const winsock::SOCKADDR,
-                            std::mem::size_of::<winsock::SOCKADDR_IN>() as i32,
-                        )
-                    }
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        libc::sendto(
-                            sockfd,
-                            packet.as_ptr() as *const libc::c_void,
-                            packet.len(),
-                            0,
-                            &sockaddr as *const _ as *const libc::sockaddr,
-                            std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-                        ) as i32
-                    }
+                    libc::sendto(
+                        sockfd,
+                        packet.as_ptr() as *const libc::c_void,
+                        packet.len(),
+                        0,
+                        &sockaddr as *const _ as *const libc::sockaddr,
+                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    ) as i32
                 };
 
                 if send_res > 0 {
                     // Try to receive reply
                     let mut buf = [0u8; 1024];
                     let n = unsafe {
-                        #[cfg(target_os = "windows")]
-                        {
-                            winsock::recvfrom(
-                                sockfd as _,
-                                buf.as_mut_ptr() as *mut u8,
-                                buf.len() as i32,
-                                0,
-                                std::ptr::null_mut(),
-                                std::ptr::null_mut(),
-                            )
-                        }
-                        #[cfg(not(target_os = "windows"))]
-                        {
-                            libc::recvfrom(
-                                sockfd,
-                                buf.as_mut_ptr() as *mut libc::c_void,
-                                buf.len(),
-                                0,
-                                std::ptr::null_mut(),
-                                std::ptr::null_mut(),
-                            ) as i32
-                        }
+                        libc::recvfrom(
+                            sockfd,
+                            buf.as_mut_ptr() as *mut libc::c_void,
+                            buf.len(),
+                            0,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        ) as i32
                     };
 
                     if n > 0 {
@@ -431,10 +531,7 @@ pub fn mtr(target: &str, duration_ms: u32) -> String {
         }
 
         unsafe {
-            #[cfg(target_os = "windows")]
-        winsock::closesocket(sockfd as _);
-            #[cfg(not(target_os = "windows"))]
-        libc::close(sockfd);
+            libc::close(sockfd);
         }
     });
 
