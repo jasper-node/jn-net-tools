@@ -11,19 +11,21 @@ This library uses a **hybrid architecture**:
 - **Rust (FFI)**: Handles low-level, high-performance, or raw socket tasks.
 - **Deno (Native)**: Handles high-level protocols and text-based diagnostics.
 
-| Category         | Tool            | Implementation | Description                                                          |
-| ---------------- | --------------- | -------------- | -------------------------------------------------------------------- |
-| **Connectivity** | `Ping`          | 🦀 Rust        | ICMP Echo requests with detailed per-packet stats.                   |
-|                  | `TraceRoute`    | 🦀 Rust        | Layer 3 path analysis.                                               |
-|                  | `MTR`           | 🦀 Rust        | Continuous traceroute with jitter/loss statistics.                   |
-| **Performance**  | `Bandwidth`     | 🦀 Rust        | TCP/UDP throughput testing.                                          |
-| **Discovery**    | `ArpScan`       | 🦀 Rust        | Layer 2 local device discovery.                                      |
-|                  | `GetInterfaces` | 🦀 Rust        | List adapters, IPs, and MAC addresses.                               |
-| **Diagnostics**  | `Sniff`         | 🦀 Rust        | Live packet capture (uses `AF_PACKET` on Linux, `Npcap` on Windows). |
-|                  | `CheckPort`     | 🦀 Rust        | TCP/UDP port availability check.                                     |
-| **Application**  | `DNS`           | 🦀 Rust        | Deep DNS resolution and record inspection.                           |
-|                  | `HTTP`          | 🦕 Deno        | Web diagnostics (Latency, SSL status, Headers).                      |
-|                  | `Whois`         | 🦕 Deno        | Domain ownership registration info.                                  |
+| Category         | Tool                   | Implementation | Description                                                             |
+| ---------------- | ---------------------- | -------------- | ----------------------------------------------------------------------- |
+| **Connectivity** | `Ping`                 | 🦀 Rust        | ICMP Echo requests with detailed per-packet stats.                      |
+|                  | `TraceRoute`           | 🦀 Rust        | Layer 3 path analysis.                                                  |
+|                  | `MTR`                  | 🦀 Rust        | Continuous traceroute with jitter/loss statistics.                      |
+| **Performance**  | `Bandwidth`            | 🦀 Rust        | TCP/UDP throughput testing.                                             |
+| **Discovery**    | `ArpScan`              | 🦀 Rust        | Layer 2 local device discovery.                                         |
+|                  | `GetInterfaces`        | 🦀 Rust        | List adapters, IPs, MAC addresses, gateways, and DNS servers.           |
+|                  | `GetNetworkInterfaces` | 🦀+🦕 Hybrid   | Enhanced interface list with IPv4/IPv6 separation and gateway/DNS info. |
+|                  | `GetDefaultInterface`  | 🦀+🦕 Hybrid   | Identifies the network interface used for internet access.              |
+| **Diagnostics**  | `Sniff`                | 🦀 Rust        | Live packet capture (uses `AF_PACKET` on Linux, `Npcap` on Windows).    |
+|                  | `CheckPort`            | 🦀 Rust        | TCP/UDP port availability check.                                        |
+| **Application**  | `DNS`                  | 🦀 Rust        | Deep DNS resolution and record inspection.                              |
+|                  | `HTTP`                 | 🦕 Deno        | Web diagnostics (Latency, SSL status, Headers).                         |
+|                  | `Whois`                | 🦕 Deno        | Domain ownership registration info.                                     |
 
 ## Installation
 
@@ -83,6 +85,10 @@ console.log(await net.mtr("1.1.1.1", 5000)); // Run MTR for 5 seconds
 
 // 2. Discovery (Rust FFI)
 console.log(await net.arpScan("eth0"));
+const interfaces = await net.getNetworkInterfaces(); // Enhanced interface list with gateways/DNS
+console.log(interfaces);
+const defaultInterface = await net.getDefaultInterface(); // Interface used for internet access
+console.log(defaultInterface);
 
 // 3. Performance (Rust FFI)
 // Test TCP throughput to target on port 8080 for 10 seconds
@@ -114,6 +120,7 @@ deno run -A examples/bandwidth_example.ts
 deno run -A examples/check_port_example.ts
 deno run -A examples/dns_example.ts
 deno run -A examples/get_interfaces_example.ts
+deno run -A examples/get_default_interface_example.ts
 deno run -A examples/http_example.ts
 deno run -A examples/sniff_example.ts
 deno run -A examples/filters_example.ts  # View supported packet filter patterns
@@ -123,6 +130,60 @@ sudo deno run -A examples/ping_example.ts
 sudo deno run -A examples/mtr_example.ts
 sudo deno run -A examples/traceroute_example.ts
 ```
+
+## 📡 Network Interface Discovery
+
+The library provides three methods for discovering network interfaces:
+
+### `getInterfaces()` - Basic Interface List
+
+Returns a simple list of network interfaces with IP addresses and MAC addresses:
+
+```typescript
+const interfaces = await net.getInterfaces();
+// Returns: Array of interfaces with name, mac, ips, subnet_masks, is_up
+```
+
+### `getNetworkInterfaces()` - Enhanced Interface List
+
+Returns a comprehensive interface list that combines Deno's native interface data with Rust-extracted gateway and DNS information:
+
+```typescript
+const interfaces = await net.getNetworkInterfaces();
+```
+
+**Features:**
+
+- **IPv4/IPv6 Separation**: IPs are split into `ips` (IPv4) and `ip6s` (IPv6) arrays
+- **Gateway Information**: Shows IPv4 gateways for each interface
+- **DNS Servers**: Lists IPv4 DNS servers configured for each interface
+- **Virtual Interface Filtering**: Automatically filters out virtual/filter adapters (WFP, QoS, Npcap filters, etc.)
+- **Grouped by System Name**: Interfaces are grouped by their system name (e.g., Npcap device name on Windows)
+
+**Example Output:**
+
+```json
+[
+  {
+    "name": "Wi-Fi",
+    "mac": "14:85:7f:41:ed:d5",
+    "ips": ["192.168.97.107"],
+    "ip6s": ["fe80::614b:a4d7:eb32:2669"],
+    "subnet_masks": ["ffff:ffff:ffff:ffff::", "255.255.255.0"],
+    "is_up": true,
+    "systemName": "\\Device\\NPF_{C95FBE07-8A6F-41BC-B89C-7E6441862B4A}",
+    "gateways": ["192.168.97.1"],
+    "dnsServers": ["192.168.97.1"],
+    "description": "Intel(R) Wi-Fi 6 AX201 160MHz"
+  }
+]
+```
+
+**Platform Support:**
+
+- **Windows**: Uses `GetAdaptersAddresses` API to extract gateway and DNS information
+- **Linux**: Reads `/proc/net/route` for gateways and `/etc/resolv.conf` for DNS
+- **macOS**: Uses `netstat -rn` for gateways and `/etc/resolv.conf` for DNS
 
 ## 🦈 Packet Sniffing Configuration
 

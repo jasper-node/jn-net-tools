@@ -4,7 +4,13 @@ import stringify from "json-stringify-pretty-compact";
 const tools = new JNNetTools();
 await tools.init();
 
-const iface = Deno.args[0] || "en0";
+const defaultInterface = await tools.getDefaultInterface();
+if (!defaultInterface) {
+  console.error("No default interface found");
+  Deno.exit(1);
+}
+
+const iface = Deno.args[0] || defaultInterface.name;
 // const filter = Deno.args[1] || "tcp port 80";
 const filter = Deno.args[1] || "tcp";
 

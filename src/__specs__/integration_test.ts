@@ -15,47 +15,6 @@ async function ensureToolsInitialized(): Promise<JNNetTools> {
   return tools;
 }
 
-async function findOnlineInterface(): Promise<InterfaceInfo | null> {
-  const toolsInstance = await ensureToolsInitialized();
-  const interfaces = await toolsInstance.getInterfaces();
-  assertExists(interfaces, "Expected array of interfaces");
-  assertEquals(Array.isArray(interfaces), true, "Expected array of interfaces");
-
-  // First, verify system connectivity using DNS lookup
-  let systemOnline = false;
-  try {
-    const dnsResult = await toolsInstance.dns("example.com");
-    if (dnsResult.status === "OK" && !dnsResult.error) {
-      systemOnline = true;
-    }
-  } catch {
-    // System not online
-  }
-
-  if (!systemOnline) {
-    console.log("Warning: System connectivity test failed");
-  }
-
-  // Try to find a non-loopback interface that is suitable
-  for (const iface of interfaces) {
-    // Skip loopback and specialized interfaces
-    if (
-      iface.name.includes("lo") ||
-      iface.name.includes("anpi") ||
-      !iface.is_up ||
-      iface.ips.length === 0
-    ) {
-      continue;
-    }
-
-    // Return first suitable interface (system connectivity already verified)
-    return iface;
-  }
-
-  // Fallback: return first interface if none found
-  return interfaces[0] ?? null;
-}
-
 Deno.test({
   name: "test_get_interfaces",
   fn: async () => {
@@ -88,6 +47,10 @@ Deno.test({
   name: "test_dns_lookup",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     // Test with default server
     console.log("DNS lookup: example.com (default server)");
     const result = await toolsInstance.dns("example.com");
@@ -113,13 +76,19 @@ Deno.test({
 });
 
 Deno.test({
-  name: "test_find_online_interface",
+  name: "test_get_default_interface",
   fn: async () => {
-    onlineInterface = await findOnlineInterface();
-    if (onlineInterface) {
-      console.log(`Using interface: ${onlineInterface.name}`);
+    const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      assertExists(defaultInterface.name, "Expected interface name");
+      assertExists(defaultInterface.ips, "Expected IPs array");
+      assertEquals(Array.isArray(defaultInterface.ips), true, "Expected IPs to be an array");
+      assertEquals(defaultInterface.ips.length > 0, true, "Expected at least one IP");
+      console.log(`Default Interface: ${defaultInterface.name} (${defaultInterface.ips[0]})`);
+      onlineInterface = defaultInterface;
     } else {
-      console.log("Warning: No suitable online interface found");
+      console.log("Warning: No default interface found (may indicate no internet connection)");
     }
   },
   sanitizeResources: false,
@@ -129,6 +98,10 @@ Deno.test({
   name: "test_ping",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     const target = "8.8.8.8";
     console.log(`Ping: ${target} (1 packet, 1000ms timeout)`);
     const result = await toolsInstance.ping(target, 1, 1000);
@@ -157,6 +130,10 @@ Deno.test({
   name: "test_trace_route",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     const target = "8.8.8.8";
     console.log(`Trace route: ${target} (max 30 hops, 3000ms timeout)`);
     const result = await toolsInstance.traceRoute(target, 30, 3000);
@@ -182,6 +159,10 @@ Deno.test({
   name: "test_mtr",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     const target = "8.8.8.8";
     console.log(`MTR: ${target} (1000ms duration)`);
     const result = await toolsInstance.mtr(target, 1000);
@@ -219,6 +200,10 @@ Deno.test({
   name: "test_check_port",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     // Try example.com:80 first
     const host1 = "example.com";
     const port1 = 80;
@@ -253,6 +238,10 @@ Deno.test({
   name: "test_bandwidth",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     // We test against example.com:80 just to see if it runs
     const host = "example.com";
     const port = 80;
@@ -384,6 +373,10 @@ Deno.test({
   name: "test_whois",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
     console.log("Whois lookup: google.com");
     const result = await toolsInstance.whois("google.com");
     if (result.error) {

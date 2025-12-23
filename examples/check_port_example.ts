@@ -4,6 +4,11 @@ import stringify from "json-stringify-pretty-compact";
 const tools = new JNNetTools();
 await tools.init();
 
+const defaultInterface = await tools.getDefaultInterface();
+if (defaultInterface) {
+  console.log("Default Interface:", stringify(defaultInterface));
+}
+
 const target = Deno.args[0] || "google.com";
 const port = Number(Deno.args[1]) || 80;
 

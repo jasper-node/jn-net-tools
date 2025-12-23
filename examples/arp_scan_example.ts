@@ -4,8 +4,13 @@ import stringify from "json-stringify-pretty-compact";
 const tools = new JNNetTools();
 await tools.init();
 
-// You may need to specify the interface name, e.g., "en0", "eth0"
-const iface = Deno.args[0] || "en0";
+const defaultInterface = await tools.getDefaultInterface();
+if (!defaultInterface) {
+  console.error("No default interface found");
+  Deno.exit(1);
+}
+
+const iface = Deno.args[0] || defaultInterface.name;
 
 console.log(`Scanning ARP on interface ${iface}...`);
 try {

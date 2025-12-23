@@ -4,6 +4,11 @@ import stringify from "json-stringify-pretty-compact";
 const tools = new JNNetTools();
 await tools.init();
 
+const defaultInterface = await tools.getDefaultInterface();
+if (defaultInterface) {
+  console.log("Default Interface:", stringify(defaultInterface));
+}
+
 const url = Deno.args[0] || "https://example.com";
 
 console.log(`Checking HTTP status for ${url}...`);
