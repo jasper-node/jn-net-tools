@@ -363,3 +363,128 @@ pub fn ping(target: &str, count: u32, timeout_ms: u32) -> String {
 
     serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_icmp_echo_request_structure() {
+        let seq = 42;
+        let id = 1234;
+        let packet = create_icmp_echo_request(seq, id);
+
+        assert_eq!(packet.len(), 64);
+        assert_eq!(packet[0], 8);
+        assert_eq!(packet[1], 0);
+        assert_eq!(packet[4], (id >> 8) as u8);
+        assert_eq!(packet[5], (id & 0xFF) as u8);
+        assert_eq!(packet[6], (seq >> 8) as u8);
+        assert_eq!(packet[7], (seq & 0xFF) as u8);
+
+        for i in 0..56 {
+            assert_eq!(packet[8 + i], (i % 256) as u8);
+        }
+    }
+
+    #[test]
+    fn test_create_icmp_echo_request_checksum() {
+        let packet = create_icmp_echo_request(1, 1000);
+
+        let mut sum: u32 = 0;
+        for i in (0..packet.len()).step_by(2) {
+            let mut word = (packet[i] as u32) << 8;
+            if i + 1 < packet.len() {
+                word |= packet[i + 1] as u32;
+            }
+            sum += word;
+        }
+        while sum >> 16 != 0 {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+
+        assert_eq!(sum, 0xFFFF);
+    }
+
+    #[test]
+    fn test_parse_icmp_echo_reply_valid() {
+        let id = 1234u16;
+        let seq = 42u16;
+
+        let mut buf = vec![0u8; 48];
+        buf[0] = 0x45;
+        let ip_header_len = 20;
+
+        buf[ip_header_len] = 0;
+        buf[ip_header_len + 1] = 0;
+        buf[ip_header_len + 4] = (id >> 8) as u8;
+        buf[ip_header_len + 5] = (id & 0xFF) as u8;
+        buf[ip_header_len + 6] = (seq >> 8) as u8;
+        buf[ip_header_len + 7] = (seq & 0xFF) as u8;
+
+        assert!(parse_icmp_echo_reply(&buf, id, seq));
+    }
+
+    #[test]
+    fn test_parse_icmp_echo_reply_wrong_id() {
+        let id = 1234u16;
+        let seq = 42u16;
+
+        let mut buf = vec![0u8; 48];
+        buf[0] = 0x45;
+        let ip_header_len = 20;
+
+        buf[ip_header_len] = 0;
+        buf[ip_header_len + 1] = 0;
+        buf[ip_header_len + 4] = (9999u16 >> 8) as u8;
+        buf[ip_header_len + 5] = (9999u16 & 0xFF) as u8;
+        buf[ip_header_len + 6] = (seq >> 8) as u8;
+        buf[ip_header_len + 7] = (seq & 0xFF) as u8;
+
+        assert!(!parse_icmp_echo_reply(&buf, id, seq));
+    }
+
+    #[test]
+    fn test_parse_icmp_echo_reply_wrong_seq() {
+        let id = 1234u16;
+        let seq = 42u16;
+
+        let mut buf = vec![0u8; 48];
+        buf[0] = 0x45;
+        let ip_header_len = 20;
+
+        buf[ip_header_len] = 0;
+        buf[ip_header_len + 1] = 0;
+        buf[ip_header_len + 4] = (id >> 8) as u8;
+        buf[ip_header_len + 5] = (id & 0xFF) as u8;
+        buf[ip_header_len + 6] = (9999u16 >> 8) as u8;
+        buf[ip_header_len + 7] = (9999u16 & 0xFF) as u8;
+
+        assert!(!parse_icmp_echo_reply(&buf, id, seq));
+    }
+
+    #[test]
+    fn test_parse_icmp_echo_reply_short_packet() {
+        let buf = vec![0u8; 20];
+        assert!(!parse_icmp_echo_reply(&buf, 1234, 42));
+    }
+
+    #[test]
+    fn test_parse_icmp_echo_reply_wrong_type() {
+        let id = 1234u16;
+        let seq = 42u16;
+
+        let mut buf = vec![0u8; 48];
+        buf[0] = 0x45;
+        let ip_header_len = 20;
+
+        buf[ip_header_len] = 8;
+        buf[ip_header_len + 1] = 0;
+        buf[ip_header_len + 4] = (id >> 8) as u8;
+        buf[ip_header_len + 5] = (id & 0xFF) as u8;
+        buf[ip_header_len + 6] = (seq >> 8) as u8;
+        buf[ip_header_len + 7] = (seq & 0xFF) as u8;
+
+        assert!(!parse_icmp_echo_reply(&buf, id, seq));
+    }
+}

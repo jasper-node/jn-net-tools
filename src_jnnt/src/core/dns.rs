@@ -120,3 +120,48 @@ pub fn resolve_v4(target: &str) -> Result<std::net::Ipv4Addr, String> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_resolve_v4_valid_ip() {
+        let result = resolve_v4("192.168.1.1");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Ipv4Addr::new(192, 168, 1, 1));
+    }
+
+    #[test]
+    fn test_resolve_v4_loopback() {
+        let result = resolve_v4("127.0.0.1");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Ipv4Addr::new(127, 0, 0, 1));
+    }
+
+    #[test]
+    fn test_resolve_v4_localhost() {
+        let result = resolve_v4("localhost");
+        assert!(result.is_ok());
+        let ip = result.unwrap();
+        assert!(ip == Ipv4Addr::new(127, 0, 0, 1) || ip.is_loopback());
+    }
+
+    #[test]
+    fn test_resolve_v4_invalid_ip() {
+        let result = resolve_v4("999.999.999.999");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_v4_invalid_hostname() {
+        let result = resolve_v4("this-domain-definitely-does-not-exist-12345.com");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_v4_malformed_input() {
+        let result = resolve_v4("not..a..valid..hostname");
+        assert!(result.is_err());
+    }
+}
