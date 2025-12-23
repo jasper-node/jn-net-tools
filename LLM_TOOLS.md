@@ -29,18 +29,23 @@ Closes the library and releases resources.
 Sends ICMP ping packets to test host reachability and measure latency.
 
 - **When to use**: To check if a host is online, measure network latency, or diagnose basic connectivity issues.
+- **Privileges**: Linux/macOS require elevated privileges (sudo or setcap). Windows works with regular user privileges via native ICMP API.
 
-### `traceRoute(target: string, maxHops = 30, timeoutMs = 2000)`
+### `traceRoute(target: string, maxHops = 30, timeoutMs = 1000)`
 
-Traces the network path to a target, showing each hop and its latency.
+Traces the network path to a target, showing each hop and its latency. On Windows, uses the native ICMP API for improved reliability and works without Administrator privileges.
 
 - **When to use**: To identify network routing issues, find where packets are being dropped, or understand the network path to a destination.
+- **Privileges**: Linux/macOS require elevated privileges (sudo or setcap). Windows works with regular user privileges.
+- **Note**: Set appropriate `maxHops` (default 30) for distant targets. Many routers don't respond to traceroute probes (security feature), resulting in "*" entries.
 
 ### `mtr(target: string, durationMs = 5000)`
 
-Combines ping and traceroute, continuously measuring latency and packet loss to each hop.
+Combines ping and traceroute, continuously measuring latency and packet loss to each hop. On Windows, uses the native ICMP API for improved reliability and works without Administrator privileges.
 
 - **When to use**: For continuous monitoring of network path quality, identifying intermittent issues, or analyzing jitter and packet loss over time.
+- **Privileges**: Linux/macOS require elevated privileges (sudo or setcap). Windows works with regular user privileges.
+- **Note**: Intermediate routers that don't respond to ICMP will show 100% packet loss - this is normal. Focus on the destination hop statistics.
 
 ## Network Interface Management
 

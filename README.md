@@ -11,21 +11,21 @@ This library uses a **hybrid architecture**:
 - **Rust (FFI)**: Handles low-level, high-performance, or raw socket tasks.
 - **Deno (Native)**: Handles high-level protocols and text-based diagnostics.
 
-| Category         | Tool                   | Implementation | Description                                                             |
-| ---------------- | ---------------------- | -------------- | ----------------------------------------------------------------------- |
-| **Connectivity** | `Ping`                 | 🦀 Rust        | ICMP Echo requests with detailed per-packet stats.                      |
-|                  | `TraceRoute`           | 🦀 Rust        | Layer 3 path analysis.                                                  |
-|                  | `MTR`                  | 🦀 Rust        | Continuous traceroute with jitter/loss statistics.                      |
-| **Performance**  | `Bandwidth`            | 🦀 Rust        | TCP/UDP throughput testing.                                             |
-| **Discovery**    | `ArpScan`              | 🦀 Rust        | Layer 2 local device discovery.                                         |
-|                  | `GetInterfaces`        | 🦀 Rust        | List adapters, IPs, MAC addresses, gateways, and DNS servers.           |
-|                  | `GetNetworkInterfaces` | 🦀+🦕 Hybrid   | Enhanced interface list with IPv4/IPv6 separation and gateway/DNS info. |
-|                  | `GetDefaultInterface`  | 🦀+🦕 Hybrid   | Identifies the network interface used for internet access.              |
-| **Diagnostics**  | `Sniff`                | 🦀 Rust        | Live packet capture (uses `AF_PACKET` on Linux, `Npcap` on Windows).    |
-|                  | `CheckPort`            | 🦀 Rust        | TCP/UDP port availability check.                                        |
-| **Application**  | `DNS`                  | 🦀 Rust        | Deep DNS resolution and record inspection.                              |
-|                  | `HTTP`                 | 🦕 Deno        | Web diagnostics (Latency, SSL status, Headers).                         |
-|                  | `Whois`                | 🦕 Deno        | Domain ownership registration info.                                     |
+| Category         | Tool                   | Implementation | Description                                                                   |
+| ---------------- | ---------------------- | -------------- | ----------------------------------------------------------------------------- |
+| **Connectivity** | `Ping`                 | 🦀 Rust        | ICMP Echo requests with detailed per-packet stats.                            |
+|                  | `TraceRoute`           | 🦀 Rust        | Layer 3 path analysis (Windows: native ICMP API).                             |
+|                  | `MTR`                  | 🦀 Rust        | Continuous traceroute with jitter/loss statistics (Windows: native ICMP API). |
+| **Performance**  | `Bandwidth`            | 🦀 Rust        | TCP/UDP throughput testing.                                                   |
+| **Discovery**    | `ArpScan`              | 🦀 Rust        | Layer 2 local device discovery.                                               |
+|                  | `GetInterfaces`        | 🦀 Rust        | List adapters, IPs, MAC addresses, gateways, and DNS servers.                 |
+|                  | `GetNetworkInterfaces` | 🦀+🦕 Hybrid   | Enhanced interface list with IPv4/IPv6 separation and gateway/DNS info.       |
+|                  | `GetDefaultInterface`  | 🦀+🦕 Hybrid   | Identifies the network interface used for internet access.                    |
+| **Diagnostics**  | `Sniff`                | 🦀 Rust        | Live packet capture (uses `AF_PACKET` on Linux, `Npcap` on Windows).          |
+|                  | `CheckPort`            | 🦀 Rust        | TCP/UDP port availability check.                                              |
+| **Application**  | `DNS`                  | 🦀 Rust        | Deep DNS resolution and record inspection.                                    |
+|                  | `HTTP`                 | 🦕 Deno        | Web diagnostics (Latency, SSL status, Headers).                               |
+|                  | `Whois`                | 🦕 Deno        | Domain ownership registration info.                                           |
 
 ## Installation
 
@@ -37,8 +37,9 @@ deno add jsr:@controlx-io/jn-net-tools
 
 - **Deno**: v2.6+ (Requires `--allow-ffi --unstable-ffi`)
 - **Rust**: v1.91+ (Only if building from source)
-- **Linux**: `libpcap-dev` is required for compilation. `setcap` may be required for raw socket tools (Ping/MTR) without root.
-- **Windows**: [Npcap](https://npcap.com/) must be installed (ensure "Install Npcap in WinPcap API-compatible Mode" is checked).
+- **Linux**: `libpcap-dev` is required for compilation. `setcap` may be required for raw socket tools (Ping/TraceRoute/MTR) without root.
+- **macOS**: Root privileges required for raw socket tools (Ping/TraceRoute/MTR).
+- **Windows**: [Npcap](https://npcap.com/) must be installed (ensure "Install Npcap in WinPcap API-compatible Mode" is checked). ICMP tools (Ping/TraceRoute/MTR) work without Administrator privileges via native Windows API.
 
 ## Build & Install
 
@@ -116,19 +117,17 @@ deno task test
 ```bash
 deno run -A examples/arp_scan_example.ts
 deno run -A examples/whois_example.ts
-deno run -A examples/bandwidth_example.ts
-deno run -A examples/check_port_example.ts
+deno run -A examples/bandwidth_example.ts  # ???
+deno run -A examples/check_port_example.ts  # ???
 deno run -A examples/dns_example.ts
 deno run -A examples/get_interfaces_example.ts
-deno run -A examples/get_default_interface_example.ts
 deno run -A examples/http_example.ts
 deno run -A examples/sniff_example.ts
-deno run -A examples/filters_example.ts  # View supported packet filter patterns
 
-# requires sudo
-sudo deno run -A examples/ping_example.ts
-sudo deno run -A examples/mtr_example.ts
-sudo deno run -A examples/traceroute_example.ts
+# Requires elevated privileges (Linux: sudo or setcap | macOS: sudo | Windows: regular user)
+deno run -A examples/ping_example.ts
+deno run -A examples/mtr_example.ts
+deno run -A examples/traceroute_example.ts
 ```
 
 ## 📡 Network Interface Discovery

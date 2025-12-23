@@ -240,19 +240,38 @@ fn trace_route_windows(target: &str, max_hops: i32, timeout_ms: u32) -> String {
                 let reply_addr = Ipv4Addr::from(reply.Address.to_ne_bytes());
                 let status = reply.Status;
 
-                // Status 0 = Success (reached destination)
-                // Status 11010 (0x2B02) = TTL expired (TIME_EXCEEDED)
-                if status == 0 || status == 11010 {
+                // Status codes from IP_STATUS:
+                // 0 (IP_SUCCESS) = Success (reached destination)
+                // 11010 (IP_TTL_EXPIRED_TRANSIT) = TTL expired in transit
+                // 11013 (IP_TTL_EXPIRED_REASSEM) = TTL expired during reassembly
+                // We should accept any response with a valid IP address
+                if status == 0 {
+                    // Echo reply from destination
                     probes.push(ProbeResult {
                         ip: reply_addr.to_string(),
                         hostname: None,
                         latency_ms: elapsed.as_millis() as f64,
                     });
-
-                    if status == 0 && reply_addr == target_ip {
+                    if reply_addr == target_ip {
                         reached_destination = true;
                     }
+                } else if status == 11010 || status == 11013 {
+                    // TTL expired - we got a response from an intermediate router
+                    if reply_addr.octets() != [0, 0, 0, 0] {
+                        probes.push(ProbeResult {
+                            ip: reply_addr.to_string(),
+                            hostname: None,
+                            latency_ms: elapsed.as_millis() as f64,
+                        });
+                    } else {
+                        probes.push(ProbeResult {
+                            ip: "*".to_string(),
+                            hostname: None,
+                            latency_ms: 0.0,
+                        });
+                    }
                 } else {
+                    // Other error status - no response
                     probes.push(ProbeResult {
                         ip: "*".to_string(),
                         hostname: None,
