@@ -17,6 +17,7 @@
   ],
   "deno.envFile": ".env",
   "cSpell.words": [
+    "conn",
     "jnnt"
   ]
 }
