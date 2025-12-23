@@ -18,7 +18,7 @@ export async function whois(domain: string, server = "whois.iana.org"): Promise<
 
     while ((n = await conn.read(buf)) !== null && n > 0) {
       // Store a copy of the data to avoid buffer reuse issues
-      chunks.push(buf.subarray(0, n));
+      chunks.push(new Uint8Array(buf.subarray(0, n)));
     }
 
     conn.close();
