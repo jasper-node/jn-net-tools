@@ -15,7 +15,7 @@ async function ensureToolsInitialized(): Promise<JNNetTools> {
   return tools;
 }
 
-async function startEchoServer(port: number): Promise<Deno.Listener> {
+function startEchoServer(port: number): Deno.Listener {
   const listener = Deno.listen({ port });
   // Handle connections in background
   (async () => {
@@ -225,7 +225,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "test_check_port",
+  name: "test_check_port_open",
   fn: async () => {
     const toolsInstance = await ensureToolsInitialized();
     const defaultInterface = await toolsInstance.getDefaultInterface();
@@ -249,15 +249,26 @@ Deno.test({
       result = await toolsInstance.checkPort(host2, port2, "tcp", 2000);
       assertEquals(result.open, true, `Expected port ${port2} on ${host2} to be open`);
       console.log(`  Port ${result.port}: ${result.open ? "OPEN" : "CLOSED"}`);
-
-      // Now check a port that should be closed
-      const host3 = "8.8.8.8";
-      const port3 = 54;
-      console.log(`  Trying known CLOSED port ${host3}:${port3}`);
-      const result3 = await toolsInstance.checkPort(host3, port3, "tcp", 1000);
-      assertEquals(result3.open, false, `Expected port ${port3} on ${host3} to be closed`);
-      console.log(`  Port ${result3.port}: ${result3.open ? "OPEN" : "CLOSED"}`);
     }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "test_check_port_closed",
+  fn: async () => {
+    const toolsInstance = await ensureToolsInitialized();
+    const defaultInterface = await toolsInstance.getDefaultInterface();
+    if (defaultInterface) {
+      console.log(`Default Interface: ${defaultInterface.name}`);
+    }
+    // Test a port that should be closed
+    const host = "8.8.8.8";
+    const port = 54;
+    console.log(`Check port: ${host}:${port} (tcp, 1000ms timeout)`);
+    const result = await toolsInstance.checkPort(host, port, "tcp", 1000);
+    assertEquals(result.open, false, `Expected port ${port} on ${host} to be closed`);
+    console.log(`  Port ${result.port}: ${result.open ? "OPEN" : "CLOSED"}`);
   },
   sanitizeResources: false,
 });

@@ -3,7 +3,7 @@ import stringify from "json-stringify-pretty-compact";
 
 const PORT = 8092;
 
-async function startEchoServer() {
+function startEchoServer() {
   const listener = Deno.listen({ port: PORT });
   console.log(`Local Echo Server listening on port ${PORT}...`);
 
@@ -47,7 +47,7 @@ const useLocalServer = !Deno.args[0];
 let server: Deno.Listener | null = null;
 
 if (useLocalServer) {
-  server = await startEchoServer();
+  server = startEchoServer();
   // Give server a moment to start
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
