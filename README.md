@@ -117,8 +117,8 @@ deno task test
 ```bash
 deno run -A examples/arp_scan_example.ts
 deno run -A examples/whois_example.ts
-deno run -A examples/bandwidth_example.ts  # ???
-deno run -A examples/check_port_example.ts  # ???
+deno run -A examples/bandwidth_example.ts
+deno run -A examples/check_port_example.ts
 deno run -A examples/dns_example.ts
 deno run -A examples/get_interfaces_example.ts
 deno run -A examples/http_example.ts

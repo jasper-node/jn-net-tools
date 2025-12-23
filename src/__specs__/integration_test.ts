@@ -15,6 +15,34 @@ async function ensureToolsInitialized(): Promise<JNNetTools> {
   return tools;
 }
 
+async function startEchoServer(port: number): Promise<Deno.Listener> {
+  const listener = Deno.listen({ port });
+  // Handle connections in background
+  (async () => {
+    for await (const conn of listener) {
+      // Echo data back to test bidirectional throughput
+      try {
+        const buf = new Uint8Array(32 * 1024);
+        while (true) {
+          const n = await conn.read(buf);
+          if (n === null || n === 0) break;
+          // Echo the data back
+          await conn.write(buf.subarray(0, n));
+        }
+      } catch {
+        // Ignore errors
+      } finally {
+        try {
+          conn.close();
+        } catch {
+          // Ignore close errors
+        }
+      }
+    }
+  })();
+  return listener;
+}
+
 Deno.test({
   name: "test_get_interfaces",
   fn: async () => {
@@ -242,19 +270,32 @@ Deno.test({
     if (defaultInterface) {
       console.log(`Default Interface: ${defaultInterface.name}`);
     }
-    // We test against example.com:80 just to see if it runs
-    const host = "example.com";
-    const port = 80;
-    console.log(`Bandwidth test: ${host}:${port} (tcp, 500ms duration)`);
-    const result = await toolsInstance.bandwidth(host, port, "tcp", 500);
-    assertEquals(typeof result.target, "string");
-    assertEquals(typeof result.throughput_mbps, "number");
-    assertEquals(result.throughput_mbps > 0, true, "Expected non-zero throughput");
-    console.log(
-      `  Target: ${result.target}:${result.port}, Throughput: ${
-        result.throughput_mbps.toFixed(2)
-      } Mbps, Sent: ${result.bytes_sent} bytes, Received: ${result.bytes_received} bytes`,
-    );
+    // Start a local echo server for accurate throughput testing
+    const port = 8090;
+    const server = await startEchoServer(port);
+    // Give server a moment to start
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    try {
+      const host = "127.0.0.1";
+      console.log(`Bandwidth test: ${host}:${port} (tcp, 1000ms duration)`);
+      const result = await toolsInstance.bandwidth(host, port, "tcp", 1000);
+      assertEquals(typeof result.target, "string");
+      assertEquals(typeof result.throughput_mbps, "number");
+      assertEquals(result.throughput_mbps > 0, true, "Expected non-zero throughput");
+      assertEquals(
+        result.bytes_received > 0,
+        true,
+        "Expected non-zero received bytes (echo server should echo data back)",
+      );
+      console.log(
+        `  Target: ${result.target}:${result.port}, Throughput: ${
+          result.throughput_mbps.toFixed(2)
+        } Mbps, Sent: ${result.bytes_sent} bytes, Received: ${result.bytes_received} bytes`,
+      );
+    } finally {
+      server.close();
+    }
   },
   sanitizeResources: false,
 });

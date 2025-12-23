@@ -9,13 +9,17 @@ if (defaultInterface) {
   console.log("Default Interface:", defaultInterface.name);
 }
 
-const target = Deno.args[0] || "google.com";
+const target = Deno.args[0] || "example.com";
 const port = Number(Deno.args[1]) || 80;
 
 console.log(`Checking if ${target}:${port} is open...`);
 try {
-  const result = await tools.checkPort(target, port, "tcp", 2000);
-  console.log("Result:", stringify(result));
+  let result = await tools.checkPort(target, port, "tcp", 2000);
+  console.log("Result 1:", stringify(result));
+  result = await tools.checkPort(target, 443, "tcp", 2000);
+  console.log("Result 2:", stringify(result));
+  result = await tools.checkPort("google.com", 8080, "tcp", 2000);
+  console.log("Result 3 for google.com:8080:", stringify(result));
 } catch (err) {
   console.error("Error:", err);
 }

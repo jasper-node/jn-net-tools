@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::net::{TcpStream, UdpSocket};
+use std::net::{TcpStream, UdpSocket, ToSocketAddrs};
 use std::time::Duration;
 
 #[derive(Serialize, Deserialize)]
@@ -26,12 +26,18 @@ pub fn check_port(target: &str, port: u16, proto: &str, timeout_ms: u32) -> Stri
         }
     } else {
         // TCP
-        match TcpStream::connect_timeout(
-            &address.parse().unwrap_or_else(|_| "127.0.0.1:0".parse().unwrap()),
-            timeout,
-        ) {
-            Ok(_) => true,
-            Err(_) => false,
+        // Resolve DNS first
+        let addr = match address.to_socket_addrs() {
+            Ok(mut addrs) => addrs.next(),
+            Err(_) => None,
+        };
+
+        match addr {
+            Some(socket_addr) => match TcpStream::connect_timeout(&socket_addr, timeout) {
+                Ok(_) => true,
+                Err(_) => false,
+            },
+            None => false,
         }
     };
 

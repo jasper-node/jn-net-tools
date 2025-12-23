@@ -381,9 +381,13 @@ fn mtr_unix(target: &str, duration_ms: u32) -> String {
         let start = Instant::now();
         let mut seq_counter = 0u16;
         let mut last_latencies: HashMap<i32, f64> = HashMap::new();
+        let mut max_hops = 30;
 
         while start.elapsed() < duration {
             for ttl in 1..=30 {
+                if ttl > max_hops {
+                    break;
+                }
                 if start.elapsed() >= duration {
                     break;
                 }
@@ -471,7 +475,8 @@ fn mtr_unix(target: &str, duration_ms: u32) -> String {
 
                             // If we got an ECHO REPLY, we reached destination
                             if icmp_type == 0 && ip == target_ip_clone {
-                                // Continue probing but mark that we reached destination
+                                // Stop incrementing TTLs for this sequence
+                                max_hops = ttl;
                             }
                         } else {
                             // No valid response
