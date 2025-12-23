@@ -182,7 +182,6 @@ fn mtr_windows(target: &str, duration_ms: u32) -> String {
     let target_ip_clone = target_ip;
 
     let handle = thread::spawn(move || {
-        // Create ICMP handle
         let icmp_handle = unsafe { iphlp::IcmpCreateFile() };
         if icmp_handle == 0 || icmp_handle == -1isize {
             return;
@@ -191,7 +190,6 @@ fn mtr_windows(target: &str, duration_ms: u32) -> String {
         let start = Instant::now();
         let mut last_latencies: HashMap<i32, f64> = HashMap::new();
 
-        // Prepare send data and reply buffer
         let send_data = vec![0u8; 32];
         let reply_size = std::mem::size_of::<iphlp::ICMP_ECHO_REPLY>() + send_data.len() + 8;
         let mut reply_buffer = vec![0u8; reply_size];
@@ -199,17 +197,22 @@ fn mtr_windows(target: &str, duration_ms: u32) -> String {
         let dest_addr = u32::from_ne_bytes(target_ip_clone.octets());
         let timeout_ms = 1000u32;
 
-        let mut max_ttl_reached = 1i32;
+        // FIX 1: Track the final hop TTL. Default to 30.
+        let mut current_search_depth = 1i32;
+        let mut target_found_at_ttl = 30i32;
+        let mut target_found = false;
 
         while start.elapsed() < duration {
-            for ttl in 1i32..=max_ttl_reached.min(30) {
+            // FIX 2: Only iterate up to the found target or current depth
+            let loop_limit = if target_found { target_found_at_ttl } else { current_search_depth.min(30) };
+
+            for ttl in 1i32..=loop_limit {
                 if start.elapsed() >= duration {
                     break;
                 }
 
                 let probe_start = Instant::now();
 
-                // Set IP options with TTL
                 let mut ip_options = iphlp::IP_OPTION_INFORMATION {
                     Ttl: ttl as u8,
                     Tos: 0,
@@ -251,15 +254,12 @@ fn mtr_windows(target: &str, duration_ms: u32) -> String {
                     let reply_addr = Ipv4Addr::from(reply.Address.to_ne_bytes());
                     let status = reply.Status;
 
-                    // Status 0 = Success (reached destination)
-                    // Status 11010 (0x2B02) = TTL expired (TIME_EXCEEDED)
                     if status == 0 || status == 11010 {
                         let latency = probe_start.elapsed().as_millis() as f64;
                         
                         hop_stat.ip = reply_addr.to_string();
                         hop_stat.received += 1;
 
-                        // Update latency stats
                         if hop_stat.min_latency_ms == 0.0 || latency < hop_stat.min_latency_ms {
                             hop_stat.min_latency_ms = latency;
                         }
@@ -267,36 +267,34 @@ fn mtr_windows(target: &str, duration_ms: u32) -> String {
                             hop_stat.max_latency_ms = latency;
                         }
 
-                        // Calculate jitter
                         if let Some(&last_latency) = last_latencies.get(&ttl) {
                             let jitter = (latency - last_latency).abs();
                             hop_stat.jitter_ms = (hop_stat.jitter_ms + jitter) / 2.0;
                         }
                         last_latencies.insert(ttl, latency);
 
-                        // Update average
                         let total_latency = hop_stat.avg_latency_ms * (hop_stat.received - 1) as f64 + latency;
                         hop_stat.avg_latency_ms = total_latency / hop_stat.received as f64;
 
-                        // If we reached destination, update max_ttl_reached
-                        if status == 0 && reply_addr == target_ip_clone && ttl > max_ttl_reached {
-                            max_ttl_reached = ttl;
+                        // FIX 3: If target found, lock the depth
+                        if status == 0 && reply_addr == target_ip_clone {
+                            if !target_found || ttl < target_found_at_ttl {
+                                target_found = true;
+                                target_found_at_ttl = ttl;
+                            }
                         }
                     }
                 }
 
-                // Update loss percentage
                 hop_stat.loss_percent = ((hop_stat.sent - hop_stat.received) as f64 / hop_stat.sent as f64) * 100.0;
-
                 drop(stats_guard);
 
-                // Small delay between probes
                 thread::sleep(Duration::from_millis(10));
             }
 
-            // Increment max_ttl if we haven't found the destination yet
-            if max_ttl_reached < 30 {
-                max_ttl_reached += 1;
+            // FIX 4: Only expand search depth if we haven't found the target
+            if !target_found && current_search_depth < 30 {
+                current_search_depth += 1;
             }
         }
 
@@ -307,7 +305,6 @@ fn mtr_windows(target: &str, duration_ms: u32) -> String {
 
     handle.join().unwrap();
 
-    // Collect results
     let stats_guard = stats.lock().unwrap();
     let mut hops: Vec<HopStats> = stats_guard.values().cloned().collect();
     hops.sort_by_key(|h| h.hop);
