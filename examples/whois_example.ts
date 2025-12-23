@@ -6,7 +6,7 @@ await tools.init();
 
 const defaultInterface = await tools.getDefaultInterface();
 if (defaultInterface) {
-  console.log("Default Interface:", stringify(defaultInterface));
+  console.log("Default Interface:", defaultInterface.name);
 }
 
 const domain = Deno.args[0] || "google.com";
