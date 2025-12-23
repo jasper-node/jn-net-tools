@@ -6,7 +6,7 @@ await tools.init();
 
 console.log("Listing network interfaces...");
 try {
-  const result = await tools.getInterfaces();
+  const result = await tools.getNetworkInterfaces();
   console.log("Result:", stringify(result));
 } catch (err) {
   console.error("Error:", err);

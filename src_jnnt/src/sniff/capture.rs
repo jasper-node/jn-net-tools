@@ -169,15 +169,18 @@ fn matches_filter(packet: &PacketSummary, filter: &str) -> bool {
 }
 
 pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packets: i32, include_data: bool) -> String {
+    // Resolve friendly name to system name on Windows
+    let resolved_name = crate::l2::interfaces::resolve_interface_name(iface_name);
+    
     let interfaces = datalink::interfaces();
     
-    let _iface = match interfaces.iter().find(|i| i.name == iface_name) {
+    let _iface = match interfaces.iter().find(|i| i.name == resolved_name) {
         Some(i) => i,
         None => {
             let result = SniffResult {
                 captured: 0,
                 packets: vec![],
-                error: Some(format!("Interface {} not found", iface_name)),
+                error: Some(format!("Interface {} not found (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)", iface_name)),
             };
             return serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string());
         }
@@ -195,7 +198,7 @@ pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packe
             }
         };
 
-        if let Err(e) = socket.bind(iface_name).await {
+        if let Err(e) = socket.bind(&resolved_name).await {
             return SniffResult {
                 captured: 0,
                 packets: vec![],

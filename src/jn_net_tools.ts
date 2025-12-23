@@ -56,8 +56,13 @@ export interface InterfaceInfo {
   name: string;
   mac: string;
   ips: string[];
+  ip6s: string[];
   subnet_masks: string[];
   is_up: boolean;
+  systemName?: string;
+  gateways?: string[];
+  dnsServers?: string[];
+  description?: string;
 }
 
 export interface ArpDevice {
@@ -203,6 +208,167 @@ export class JNNetTools {
     const result = view.getCString();
     await this.lib!.symbols.free_string(resultPtr);
     return JSON.parse(result) as InterfaceInfo[];
+  }
+
+  async getNetworkInterfaces(): Promise<InterfaceInfo[]> {
+    this.ensureInitialized();
+
+    // Helper to check if an IP is IPv4
+    const isIPv4 = (ip: string): boolean => {
+      return ip.includes(".") && !ip.includes(":");
+    };
+
+    // Helper to check if interface is virtual/filter (should be filtered out)
+    const isVirtualInterface = (name: string, description?: string): boolean => {
+      const nameLower = name.toLowerCase();
+      const descLower = (description || "").toLowerCase();
+      return (
+        nameLower.includes("-wfp") ||
+        nameLower.includes("-qos") ||
+        nameLower.includes("-filter") ||
+        nameLower.includes("-npcap") ||
+        nameLower.includes("-virtualbox") ||
+        nameLower.includes("-twinCAT") ||
+        nameLower.includes("-native wifi") ||
+        nameLower.includes("-virtual wifi") ||
+        descLower.includes("filter") ||
+        descLower.includes("wfp") ||
+        descLower.includes("qos") ||
+        descLower.includes("miniport") ||
+        descLower.includes("tunneling") ||
+        descLower.includes("6to4") ||
+        descLower.includes("teredo") ||
+        descLower.includes("ip-https")
+      );
+    };
+
+    // Get Deno network interfaces
+    const denoInterfaces = Deno.networkInterfaces();
+    if (!denoInterfaces) {
+      return [];
+    }
+
+    // Get Rust interface details (gateways, DNS, system names, is_up)
+    const resultPtr = await this.lib!.symbols.net_get_interface_details();
+    if (resultPtr === null) {
+      // Fallback to Deno interfaces only
+      const interfaceMap = new Map<string, InterfaceInfo>();
+      for (const iface of denoInterfaces) {
+        if (isVirtualInterface(iface.name)) continue;
+        const existing = interfaceMap.get(iface.name) || {
+          name: iface.name,
+          mac: iface.mac || "",
+          ips: [],
+          ip6s: [],
+          subnet_masks: [],
+          is_up: false,
+        };
+        if (isIPv4(iface.address)) {
+          existing.ips.push(iface.address);
+        } else {
+          existing.ip6s.push(iface.address);
+        }
+        existing.subnet_masks.push(iface.netmask || "");
+        interfaceMap.set(iface.name, existing);
+      }
+      return Array.from(interfaceMap.values());
+    }
+
+    const view = new Deno.UnsafePointerView(resultPtr);
+    const result = view.getCString();
+    await this.lib!.symbols.free_string(resultPtr);
+    const rustDetails = JSON.parse(result) as Array<{
+      name: string;
+      system_name: string;
+      gateways: string[];
+      dns_servers: string[];
+      is_up: boolean;
+      description?: string;
+    }>;
+
+    // Filter out virtual interfaces from Rust details
+    const filteredRustDetails = rustDetails.filter(
+      (detail) => !isVirtualInterface(detail.name, detail.description),
+    );
+
+    // Create a map of Rust details by system_name (to group by)
+    const detailsMapBySystem = new Map<string, typeof rustDetails[0]>();
+    for (const detail of filteredRustDetails) {
+      // Use the first non-virtual detail for each system_name
+      if (!detailsMapBySystem.has(detail.system_name)) {
+        detailsMapBySystem.set(detail.system_name, detail);
+      }
+    }
+
+    // Group Deno interfaces by systemName (from Rust details)
+    const interfaceMapBySystem = new Map<string, InterfaceInfo>();
+
+    for (const iface of denoInterfaces) {
+      // Find matching Rust detail by name
+      const rustDetail = filteredRustDetails.find((d) => d.name === iface.name);
+      if (!rustDetail && isVirtualInterface(iface.name)) continue;
+
+      const systemName = rustDetail?.system_name || iface.name;
+
+      // Skip if this systemName is already processed and it's a virtual interface
+      if (isVirtualInterface(iface.name, rustDetail?.description)) continue;
+
+      const existing = interfaceMapBySystem.get(systemName);
+      if (existing) {
+        if (isIPv4(iface.address)) {
+          if (!existing.ips.includes(iface.address)) {
+            existing.ips.push(iface.address);
+          }
+        } else {
+          if (!existing.ip6s.includes(iface.address)) {
+            existing.ip6s.push(iface.address);
+          }
+        }
+        if (iface.netmask && !existing.subnet_masks.includes(iface.netmask)) {
+          existing.subnet_masks.push(iface.netmask);
+        }
+      } else {
+        // Filter gateways and DNS to IPv4 only
+        const ipv4Gateways = (rustDetail?.gateways || []).filter(isIPv4);
+        const ipv4DnsServers = (rustDetail?.dns_servers || []).filter(isIPv4);
+
+        interfaceMapBySystem.set(systemName, {
+          name: rustDetail?.name || iface.name,
+          mac: iface.mac || "",
+          ips: isIPv4(iface.address) ? [iface.address] : [],
+          ip6s: isIPv4(iface.address) ? [] : [iface.address],
+          subnet_masks: iface.netmask ? [iface.netmask] : [],
+          is_up: rustDetail?.is_up ?? false,
+          systemName: systemName,
+          gateways: ipv4Gateways.length > 0 ? ipv4Gateways : undefined,
+          dnsServers: ipv4DnsServers.length > 0 ? ipv4DnsServers : undefined,
+          description: rustDetail?.description,
+        });
+      }
+    }
+
+    // Add any Rust details that don't have Deno interfaces (but filter virtual)
+    for (const detail of filteredRustDetails) {
+      if (!interfaceMapBySystem.has(detail.system_name)) {
+        const ipv4Gateways = detail.gateways.filter(isIPv4);
+        const ipv4DnsServers = detail.dns_servers.filter(isIPv4);
+
+        interfaceMapBySystem.set(detail.system_name, {
+          name: detail.name,
+          mac: "",
+          ips: [],
+          ip6s: [],
+          subnet_masks: [],
+          is_up: detail.is_up,
+          systemName: detail.system_name,
+          gateways: ipv4Gateways.length > 0 ? ipv4Gateways : undefined,
+          dnsServers: ipv4DnsServers.length > 0 ? ipv4DnsServers : undefined,
+          description: detail.description,
+        });
+      }
+    }
+
+    return Array.from(interfaceMapBySystem.values());
   }
 
   async arpScan(iface: string, timeoutMs = 5000): Promise<ArpScanResult> {

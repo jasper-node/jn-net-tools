@@ -19,7 +19,7 @@ hickory-resolver = "0.24"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 pcap = "2.2.0"
-windows-sys = { version = "0.52", features = ["Win32_Networking_WinSock", "Win32_Foundation"] }
+windows-sys = { version = "0.52", features = ["Win32_Networking_WinSock", "Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = "0.7"

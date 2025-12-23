@@ -50,8 +50,11 @@ fn build_arp_request(src_mac: &[u8; 6], src_ip: Ipv4Addr, dst_ip: Ipv4Addr) -> V
 }
 
 pub fn arp_scan(iface_name: &str, timeout_ms: u32) -> String {
+    // Resolve friendly name to system name on Windows
+    let resolved_name = crate::l2::interfaces::resolve_interface_name(iface_name);
+    
     let interfaces = datalink::interfaces();
-    let iface = match interfaces.iter().find(|i| i.name == iface_name) {
+    let iface = match interfaces.iter().find(|i| i.name == resolved_name) {
         Some(i) => i,
         None => {
             let result = ArpScanResult {
@@ -112,7 +115,7 @@ pub fn arp_scan(iface_name: &str, timeout_ms: u32) -> String {
             }
         };
 
-        if let Err(e) = socket.bind(iface_name).await {
+        if let Err(e) = socket.bind(&resolved_name).await {
             return ArpScanResult {
                 interface: iface_name.to_string(),
                 devices: vec![],
