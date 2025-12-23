@@ -170,6 +170,7 @@ fn matches_filter(packet: &PacketSummary, filter: &str) -> bool {
 
 pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packets: i32, include_data: bool) -> String {
     let interfaces = datalink::interfaces();
+    
     let _iface = match interfaces.iter().find(|i| i.name == iface_name) {
         Some(i) => i,
         None => {
@@ -247,4 +248,5 @@ pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packe
 
     serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
 }
+
 

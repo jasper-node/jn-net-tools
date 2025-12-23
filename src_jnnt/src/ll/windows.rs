@@ -12,12 +12,14 @@ pub struct WindowsRawSocket {
     send_queue: Arc<Mutex<SendQueue>>,
     rx_channel: mpsc::UnboundedReceiver<Vec<u8>>,
     _rx_task: JoinHandle<()>,
+    bound_interface: Arc<Mutex<Option<String>>>,
 }
 
 impl WindowsRawSocket {
     pub async fn new() -> io::Result<Self> {
         // Use pnet_datalink to find the default or first available interface
         let interfaces = pnet::datalink::interfaces();
+        
         let interface = interfaces.iter()
             .find(|i| !i.is_loopback() && !i.ips.is_empty())
             .or_else(|| interfaces.iter().next())
@@ -53,7 +55,10 @@ impl WindowsRawSocket {
                     
                     // Extract data while guard is alive, since Packet borrows from Capture
                     match cap_guard.next_packet() {
-                        Ok(packet) => Some(packet.data.to_vec()),
+                        Ok(packet) => {
+                            // Reduced debug output - only log every 100th packet
+                            Some(packet.data.to_vec())
+                        },
                         Err(e) => {
                             // Drop guard before handling error
                             drop(cap_guard);
@@ -67,9 +72,8 @@ impl WindowsRawSocket {
                                     // Timeout, continue
                                     continue;
                                 }
-                                e => {
-                                    // Error occurred, log and break
-                                    eprintln!("Packet receive error: {}", e);
+                                _e => {
+                                    // Error occurred, break
                                     break;
                                 }
                             }
@@ -92,12 +96,46 @@ impl WindowsRawSocket {
             send_queue,
             rx_channel: rx,
             _rx_task: rx_task,
+            bound_interface: Arc::new(Mutex::new(None)),
         })
     }
 
-    pub async fn bind(&mut self, _interface: &str) -> io::Result<()> {
-        // On Windows, the device is already bound when we open it
-        // We could verify the interface name matches, but for now just return OK
+    pub async fn bind(&mut self, interface: &str) -> io::Result<()> {
+        // Check if we're already bound to this interface
+        {
+            let bound = self.bound_interface.lock()
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Mutex poisoned"))?;
+            if let Some(ref bound_name) = *bound {
+                if bound_name == interface {
+                    return Ok(());
+                }
+            }
+        }
+        
+        // Close old capture by dropping it (the Arc will handle cleanup)
+        // Create new capture on the specified interface
+        let new_cap = Capture::from_device(interface)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open device {}: {}", interface, e)))?
+            .immediate_mode(true)
+            .open()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open capture: {}", e)))?
+            .setnonblock()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to set non-blocking: {}", e)))?;
+        
+        // Replace the old capture with the new one
+        {
+            let mut cap_guard = self.capture.lock()
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Capture mutex poisoned"))?;
+            *cap_guard = new_cap;
+        }
+        
+        // Update bound interface
+        {
+            let mut bound = self.bound_interface.lock()
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "Mutex poisoned"))?;
+            *bound = Some(interface.to_string());
+        }
+        
         Ok(())
     }
 
