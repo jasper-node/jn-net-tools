@@ -3,6 +3,7 @@ export type {
   ArpDevice,
   ArpScanResult,
   BandwidthResult,
+  DNSResult,
   InterfaceInfo,
   MtrResult,
   PacketSummary,

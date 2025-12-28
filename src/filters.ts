@@ -17,47 +17,47 @@ export function getSupportedFilters(): FilterPattern[] {
     {
       pattern: "tcp",
       description: "Capture only TCP packets",
-      example: 'tools.sniff("en0", "tcp", 5000, 10)',
+      example: 'tools.sniff("eth0", "tcp", 5000, 10)',
     },
     {
       pattern: "udp",
       description: "Capture only UDP packets",
-      example: 'tools.sniff("en0", "udp", 5000, 10)',
+      example: 'tools.sniff("eth0", "udp", 5000, 10)',
     },
     {
       pattern: "arp",
       description: "Capture only ARP packets",
-      example: 'tools.sniff("en0", "arp", 5000, 10)',
+      example: 'tools.sniff("eth0", "arp", 5000, 10)',
     },
     {
       pattern: "icmp",
       description: "Capture only ICMP packets",
-      example: 'tools.sniff("en0", "icmp", 5000, 10)',
+      example: 'tools.sniff("eth0", "icmp", 5000, 10)',
     },
     {
       pattern: "ipv6",
       description: "Capture only IPv6 packets",
-      example: 'tools.sniff("en0", "ipv6", 5000, 10)',
+      example: 'tools.sniff("eth0", "ipv6", 5000, 10)',
     },
     {
       pattern: "tcp port <port>",
       description: "Capture TCP packets on a specific port",
-      example: 'tools.sniff("en0", "tcp port 443", 5000, 10)',
+      example: 'tools.sniff("eth0", "tcp port 443", 5000, 10)',
     },
     {
       pattern: "udp port <port>",
       description: "Capture UDP packets on a specific port",
-      example: 'tools.sniff("en0", "udp port 53", 5000, 10)',
+      example: 'tools.sniff("eth0", "udp port 53", 5000, 10)',
     },
     {
       pattern: "port <port>",
       description: "Capture packets on a specific port (any protocol)",
-      example: 'tools.sniff("en0", "port 80", 5000, 10)',
+      example: 'tools.sniff("eth0", "port 80", 5000, 10)',
     },
     {
       pattern: "host <ip>",
       description: "Capture packets to/from a specific IP address",
-      example: 'tools.sniff("en0", "host 1.1.1.1", 5000, 10)',
+      example: 'tools.sniff("eth0", "host 1.1.1.1", 5000, 10)',
     },
   ];
 }
