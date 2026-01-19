@@ -48,7 +48,9 @@ deno add jsr:@controlx-io/jn-net-tools
 Download the latest pre-compiled binaries from GitHub Releases:
 
 ```bash
-deno run --allow-net scripts/download_lib.ts
+# Add to make sure you have the latest version
+deno add jsr:@controlx-io/jn-net-tools
+deno run --allow-net --allow-read --allow-write --allow-run jsr:@controlx-io/jn-net-tools/download_lib
 ```
 
 This will automatically download and extract the appropriate binaries for your platform.
