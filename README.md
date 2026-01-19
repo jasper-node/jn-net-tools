@@ -293,9 +293,9 @@ The pre-compiled FFI binaries are built and released automatically via GitHub Ac
 ### Triggering a Release
 
 1. **Tag-based trigger:**
-   Push a version tag to the repository:
+   Push a version tag to the repository with version from src_jnnt/Cargo.toml
    ```bash
-   VERSION=v1.0.0 && git tag $VERSION && git push origin $VERSION
+   VERSION=v0.1.3 && git tag $VERSION && git push origin $VERSION
    ```
    This triggers the `Build and Bundle Binaries` workflow, which builds all binaries and creates a new GitHub Release.
 
