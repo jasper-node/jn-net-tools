@@ -483,7 +483,12 @@ pub fn get_interface_details() -> String {
 }
 
 pub fn get_interfaces() -> String {
-    let interfaces = datalink::interfaces();
+    let interfaces = match std::panic::catch_unwind(|| datalink::interfaces()) {
+        Ok(ifaces) => ifaces,
+        Err(_) => {
+            return r#"{"error":"Internal error: Failed to retrieve network interfaces (pnet panic)"}"#.to_string();
+        }
+    };
     let mut result = Vec::new();
 
     #[cfg(target_os = "windows")]
