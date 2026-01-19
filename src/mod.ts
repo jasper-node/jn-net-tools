@@ -12,4 +12,7 @@ export type {
   TraceRouteResult,
 } from "./jn_net_tools.ts";
 
+export { getSupportedFilters } from "./filters.ts";
+export type { FilterPattern } from "./filters.ts";
+
 export { downloadToLocalLib } from "../scripts/download_lib.ts";
