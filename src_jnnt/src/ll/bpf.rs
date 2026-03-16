@@ -13,7 +13,7 @@ const BIOCSBLEN: u64 = 0xc0044266; // Set buffer length (was incorrect ending in
 #[allow(dead_code)]
 const BIOCSETF: u64 = 0x80104267; // Set BPF filter
 const BIOCSHDRCMPLT: u64 = 0x80044275; // Set "header complete" flag
-// const BIOCPROMISC: u64 = 0x20004269; // Removed to allow rootless operation on macOS
+const BIOCPROMISC: u64 = 0x20004269;
 
 #[repr(C)]
 struct BpfHdr {

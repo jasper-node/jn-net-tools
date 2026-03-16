@@ -18,6 +18,10 @@ This library uses a **hybrid architecture**:
 |                  | `MTR`                  | 🦀 Rust        | Continuous traceroute with jitter/loss statistics (Windows: native ICMP API). |
 | **Performance**  | `Bandwidth`            | 🦀 Rust        | TCP/UDP throughput testing.                                                   |
 | **Discovery**    | `ArpScan`              | 🦀 Rust        | Layer 2 local device discovery.                                               |
+|                  | `LldpDiscover`         | 🦀 Rust        | Passive LLDP neighbor discovery (switch/port identification).                 |
+|                  | `LldpSend`             | 🦀 Rust        | Send LLDP advertisement frame from the host.                                  |
+|                  | `DcpIdentify`          | 🦀 Rust        | PROFINET DCP device discovery (find PLCs/IO modules).                         |
+|                  | `DcpGet`               | 🦀 Rust        | Read PROFINET device parameters (IP, name, role) by MAC address.              |
 |                  | `GetInterfaces`        | 🦀 Rust        | List adapters, IPs, MAC addresses, gateways, and DNS servers.                 |
 |                  | `GetNetworkInterfaces` | 🦀+🦕 Hybrid   | Enhanced interface list with IPv4/IPv6 separation and gateway/DNS info.       |
 |                  | `GetDefaultInterface`  | 🦀+🦕 Hybrid   | Identifies the network interface used for internet access.                    |
@@ -88,6 +92,9 @@ console.log(await net.mtr("1.1.1.1", 5000)); // Run MTR for 5 seconds
 
 // 2. Discovery (Rust FFI)
 console.log(await net.arpScan("eth0"));
+console.log(await net.lldpDiscover("eth0", 10000)); // Listen for LLDP neighbors for 10s
+console.log(await net.dcpIdentify("eth0", 5000)); // Find PROFINET devices
+
 const interfaces = await net.getNetworkInterfaces(); // Enhanced interface list with gateways/DNS
 console.log(interfaces);
 const defaultInterface = await net.getDefaultInterface(); // Interface used for internet access
@@ -125,6 +132,12 @@ deno run -A examples/dns_example.ts
 deno run -A examples/get_interfaces_example.ts
 deno run -A examples/http_example.ts
 deno run -A examples/sniff_example.ts
+
+# LLDP: listen for switch/router neighbors (default 30s, pass interface and timeout as args)
+deno run -A examples/lldp_example.ts [interface] [timeout_seconds]
+
+# PROFINET DCP: discover industrial devices and read their parameters
+deno run -A examples/dcp_example.ts [interface]
 
 # Requires elevated privileges (Linux: sudo or setcap | macOS: sudo | Windows: regular user)
 deno run -A examples/ping_example.ts
@@ -247,6 +260,8 @@ const filters = getSupportedFilters();
 | `arp`             | ARP packets only     | `sniff("en0", "arp", 5000, 10)`          |
 | `icmp`            | ICMP packets only    | `sniff("en0", "icmp", 5000, 10)`         |
 | `ipv6`            | IPv6 packets only    | `sniff("en0", "ipv6", 5000, 10)`         |
+| `lldp`            | LLDP packets only    | `sniff("en0", "lldp", 30000, 10)`        |
+| `dcp`             | PROFINET DCP only    | `sniff("en0", "dcp", 5000, 10)`          |
 | `tcp port <port>` | TCP on specific port | `sniff("en0", "tcp port 443", 5000, 10)` |
 | `udp port <port>` | UDP on specific port | `sniff("en0", "udp port 53", 5000, 10)`  |
 | `port <port>`     | Any protocol on port | `sniff("en0", "port 80", 5000, 10)`      |
@@ -281,7 +296,7 @@ The pre-compiled FFI binaries are built and released automatically via GitHub Ac
 1. **Tag-based trigger:**
    Push a version tag to the repository with version from src_jnnt/Cargo.toml
    ```bash
-   VERSION=v0.1.3 && git tag $VERSION && git push origin $VERSION
+   VERSION=v0.1.5 && git tag $VERSION && git push origin $VERSION
    ```
    This triggers the `Build and Bundle Binaries` workflow, which builds all binaries and creates a new GitHub Release.
 

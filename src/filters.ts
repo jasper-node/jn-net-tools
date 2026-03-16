@@ -40,6 +40,16 @@ export function getSupportedFilters(): FilterPattern[] {
       example: 'tools.sniff("eth0", "ipv6", 5000, 10)',
     },
     {
+      pattern: "lldp",
+      description: "Capture only LLDP packets",
+      example: 'tools.sniff("eth0", "lldp", 30000, 10)',
+    },
+    {
+      pattern: "dcp",
+      description: "Capture only PROFINET DCP packets",
+      example: 'tools.sniff("eth0", "dcp", 5000, 10)',
+    },
+    {
       pattern: "tcp port <port>",
       description: "Capture TCP packets on a specific port",
       example: 'tools.sniff("eth0", "tcp port 443", 5000, 10)',
@@ -73,6 +83,8 @@ export function getFiltersByCategory() {
       { pattern: "arp", description: "ARP packets only" },
       { pattern: "icmp", description: "ICMP packets only" },
       { pattern: "ipv6", description: "IPv6 packets only" },
+      { pattern: "lldp", description: "LLDP packets only" },
+      { pattern: "dcp", description: "PROFINET DCP packets only" },
     ],
     ports: [
       { pattern: "tcp port <port>", description: "TCP on specific port" },
@@ -99,7 +111,7 @@ export function isValidFilter(filter: string): boolean {
   if (parts.length === 1) {
     const protocol = parts[0];
     if (protocol) {
-      return ["tcp", "udp", "arp", "icmp", "ipv6", "ip6"].includes(protocol);
+      return ["tcp", "udp", "arp", "icmp", "ipv6", "ip6", "lldp", "dcp"].includes(protocol);
     }
   }
 

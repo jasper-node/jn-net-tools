@@ -76,6 +76,77 @@ export interface ArpScanResult {
   error?: string;
 }
 
+export interface LldpCapabilities {
+  available: string[];
+  enabled: string[];
+}
+
+export interface LldpManagementAddress {
+  address_type: string;
+  address: string;
+  interface_subtype?: string;
+  interface_number?: number;
+}
+
+export interface LldpOrgSpecific {
+  oui: string;
+  subtype: number;
+  info: string;
+}
+
+export interface LldpNeighbor {
+  chassis_id: string;
+  chassis_id_subtype: string;
+  port_id: string;
+  port_id_subtype: string;
+  ttl: number;
+  source_mac: string;
+  port_description?: string;
+  system_name?: string;
+  system_description?: string;
+  system_capabilities?: LldpCapabilities;
+  management_addresses?: LldpManagementAddress[];
+  org_specific?: LldpOrgSpecific[];
+}
+
+export interface LldpDiscoverResult {
+  interface: string;
+  neighbors: LldpNeighbor[];
+  error?: string;
+}
+
+export interface LldpSendResult {
+  interface: string;
+  sent: boolean;
+  error?: string;
+}
+
+export interface DcpDevice {
+  mac: string;
+  name_of_station?: string;
+  type_of_station?: string;
+  ip?: string;
+  subnet_mask?: string;
+  gateway?: string;
+  vendor_id?: number;
+  device_id?: number;
+  device_role?: string;
+  alias_name?: string;
+  options?: string[];
+}
+
+export interface DcpIdentifyResult {
+  interface: string;
+  devices: DcpDevice[];
+  error?: string;
+}
+
+export interface DcpGetResult {
+  interface: string;
+  device?: DcpDevice;
+  error?: string;
+}
+
 export interface PacketSummary {
   ts: string;
   src: string;
@@ -414,6 +485,61 @@ export class JNNetTools {
         " (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)";
     }
     return parsed;
+  }
+
+  async lldpDiscover(iface: string, timeoutMs = 10000): Promise<LldpDiscoverResult> {
+    this.ensureInitialized();
+    const result = await callFFIString(
+      this.lib!.symbols,
+      this.lib!.symbols.net_lldp_discover,
+      iface,
+      timeoutMs,
+    );
+    const parsed = JSON.parse(result) as LldpDiscoverResult;
+    if (Deno.build.os === "windows" && parsed.error && parsed.error.includes("not found")) {
+      parsed.error +=
+        " (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)";
+    }
+    return parsed;
+  }
+
+  async lldpSend(iface: string, ttl = 120): Promise<LldpSendResult> {
+    this.ensureInitialized();
+    const result = await callFFIString(
+      this.lib!.symbols,
+      this.lib!.symbols.net_lldp_send,
+      iface,
+      ttl,
+    );
+    return JSON.parse(result) as LldpSendResult;
+  }
+
+  async dcpIdentify(iface: string, timeoutMs = 5000): Promise<DcpIdentifyResult> {
+    this.ensureInitialized();
+    const result = await callFFIString(
+      this.lib!.symbols,
+      this.lib!.symbols.net_dcp_identify,
+      iface,
+      timeoutMs,
+    );
+    const parsed = JSON.parse(result) as DcpIdentifyResult;
+    if (Deno.build.os === "windows" && parsed.error && parsed.error.includes("not found")) {
+      parsed.error +=
+        " (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)";
+    }
+    return parsed;
+  }
+
+  async dcpGet(iface: string, targetMac: string, timeoutMs = 3000): Promise<DcpGetResult> {
+    this.ensureInitialized();
+    const result = await callFFIStringNullable(
+      this.lib!.symbols,
+      this.lib!.symbols.net_dcp_get,
+      iface,
+      targetMac,
+      timeoutMs,
+    );
+    return JSON.parse(result) as DcpGetResult;
   }
 
   async sniff(

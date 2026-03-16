@@ -27,6 +27,14 @@ export interface FFILibrary {
   net_get_interface_details: () => Promise<Deno.PointerValue>;
   net_get_default_local_ip: () => Promise<Deno.PointerValue>;
   net_arp_scan: (iface: Deno.PointerValue, timeout_ms: number) => Promise<Deno.PointerValue>;
+  net_lldp_discover: (iface: Deno.PointerValue, timeout_ms: number) => Promise<Deno.PointerValue>;
+  net_lldp_send: (iface: Deno.PointerValue, ttl: number) => Promise<Deno.PointerValue>;
+  net_dcp_identify: (iface: Deno.PointerValue, timeout_ms: number) => Promise<Deno.PointerValue>;
+  net_dcp_get: (
+    iface: Deno.PointerValue,
+    target_mac: Deno.PointerValue,
+    timeout_ms: number,
+  ) => Promise<Deno.PointerValue>;
   net_sniff: (
     iface: Deno.PointerValue,
     filter: Deno.PointerValue,
@@ -169,6 +177,26 @@ export async function loadFFILibrary(basePath?: string): Promise<LoadedFFILibrar
     },
     net_arp_scan: {
       parameters: ["pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_lldp_discover: {
+      parameters: ["pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_lldp_send: {
+      parameters: ["pointer", "u16"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_dcp_identify: {
+      parameters: ["pointer", "u32"],
+      result: "pointer",
+      nonblocking: true,
+    },
+    net_dcp_get: {
+      parameters: ["pointer", "pointer", "u32"],
       result: "pointer",
       nonblocking: true,
     },

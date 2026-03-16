@@ -208,6 +208,143 @@ pub extern "C" fn net_arp_scan(iface: *const c_char, timeout_ms: u32) -> *mut c_
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn net_lldp_discover(iface: *const c_char, timeout_ms: u32) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let iface_str = unsafe {
+            match CStr::from_ptr(iface).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    return r#"{"error":"Invalid interface string"}"#.to_string();
+                }
+            }
+        };
+
+        l2::lldp::lldp_discover(iface_str, timeout_ms)
+    }));
+
+    match result {
+        Ok(json_str) => {
+            match CString::new(json_str) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => {
+                    let err = CString::new(r#"{"error":"Failed to create result string"}"#).unwrap();
+                    err.into_raw()
+                }
+            }
+        }
+        Err(_) => {
+            let err = CString::new(r#"{"error":"Panic occurred in net_lldp_discover"}"#).unwrap();
+            err.into_raw()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn net_lldp_send(iface: *const c_char, ttl: u16) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let iface_str = unsafe {
+            match CStr::from_ptr(iface).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    return r#"{"error":"Invalid interface string"}"#.to_string();
+                }
+            }
+        };
+
+        l2::lldp::lldp_send(iface_str, ttl)
+    }));
+
+    match result {
+        Ok(json_str) => {
+            match CString::new(json_str) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => {
+                    let err = CString::new(r#"{"error":"Failed to create result string"}"#).unwrap();
+                    err.into_raw()
+                }
+            }
+        }
+        Err(_) => {
+            let err = CString::new(r#"{"error":"Panic occurred in net_lldp_send"}"#).unwrap();
+            err.into_raw()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn net_dcp_identify(iface: *const c_char, timeout_ms: u32) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let iface_str = unsafe {
+            match CStr::from_ptr(iface).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    return r#"{"error":"Invalid interface string"}"#.to_string();
+                }
+            }
+        };
+
+        l2::dcp::dcp_identify(iface_str, timeout_ms)
+    }));
+
+    match result {
+        Ok(json_str) => {
+            match CString::new(json_str) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => {
+                    let err = CString::new(r#"{"error":"Failed to create result string"}"#).unwrap();
+                    err.into_raw()
+                }
+            }
+        }
+        Err(_) => {
+            let err = CString::new(r#"{"error":"Panic occurred in net_dcp_identify"}"#).unwrap();
+            err.into_raw()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn net_dcp_get(iface: *const c_char, target_mac: *const c_char, timeout_ms: u32) -> *mut c_char {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let iface_str = unsafe {
+            match CStr::from_ptr(iface).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    return r#"{"error":"Invalid interface string"}"#.to_string();
+                }
+            }
+        };
+
+        let target_mac_str = unsafe {
+            match CStr::from_ptr(target_mac).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    return r#"{"error":"Invalid target MAC string"}"#.to_string();
+                }
+            }
+        };
+
+        l2::dcp::dcp_get(iface_str, target_mac_str, timeout_ms)
+    }));
+
+    match result {
+        Ok(json_str) => {
+            match CString::new(json_str) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => {
+                    let err = CString::new(r#"{"error":"Failed to create result string"}"#).unwrap();
+                    err.into_raw()
+                }
+            }
+        }
+        Err(_) => {
+            let err = CString::new(r#"{"error":"Panic occurred in net_dcp_get"}"#).unwrap();
+            err.into_raw()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn net_sniff(iface: *const c_char, filter: *const c_char, duration_ms: u32, max_packets: i32, include_data: u8) -> *mut c_char {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let iface_str = unsafe {

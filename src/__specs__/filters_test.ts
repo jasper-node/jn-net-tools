@@ -6,7 +6,7 @@ Deno.test({
   fn: () => {
     const filters = getSupportedFilters();
     assertEquals(Array.isArray(filters), true);
-    assertEquals(filters.length, 9);
+    assertEquals(filters.length, 11);
 
     // Verify structure of each filter
     for (const filter of filters) {
@@ -35,7 +35,7 @@ Deno.test({
     assertEquals(Array.isArray(categorized.hosts), true);
 
     // Verify protocols category
-    assertEquals(categorized.protocols.length, 5);
+    assertEquals(categorized.protocols.length, 7);
     const protocolPatterns = categorized.protocols.map((f) => f.pattern);
     assertEquals(protocolPatterns.includes("tcp"), true);
     assertEquals(protocolPatterns.includes("udp"), true);
@@ -73,6 +73,8 @@ Deno.test({
     assertEquals(isValidFilter("icmp"), true);
     assertEquals(isValidFilter("ipv6"), true);
     assertEquals(isValidFilter("ip6"), true);
+    assertEquals(isValidFilter("lldp"), true);
+    assertEquals(isValidFilter("dcp"), true);
 
     // Case insensitive
     assertEquals(isValidFilter("TCP"), true);

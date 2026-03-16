@@ -105,6 +105,67 @@ fn process_packet(packet: &[u8], include_data: bool) -> Option<PacketSummary> {
                 };
             }
         }
+        _ if ethernet.get_ethertype().0 == 0x88CC => {
+            summary.proto = "LLDP".to_string();
+            summary.src = ethernet.get_source().to_string();
+            summary.dst = ethernet.get_destination().to_string();
+
+            let payload = ethernet.payload();
+            let mut info_parts = Vec::new();
+            let mut offset = 0;
+            while offset + 2 <= payload.len() {
+                let type_len = u16::from_be_bytes([payload[offset], payload[offset + 1]]);
+                let tlv_type = (type_len >> 9) as u8;
+                let tlv_len = (type_len & 0x01FF) as usize;
+                offset += 2;
+                if tlv_type == 0 || offset + tlv_len > payload.len() { break; }
+                match tlv_type {
+                    5 => {
+                        if let Ok(name) = std::str::from_utf8(&payload[offset..offset + tlv_len]) {
+                            info_parts.push(format!("name={}", name.trim_end_matches('\0')));
+                        }
+                    }
+                    3 if tlv_len >= 2 => {
+                        let ttl = u16::from_be_bytes([payload[offset], payload[offset + 1]]);
+                        info_parts.push(format!("ttl={}", ttl));
+                    }
+                    _ => {}
+                }
+                offset += tlv_len;
+            }
+            summary.info = if info_parts.is_empty() {
+                "LLDP frame".to_string()
+            } else {
+                info_parts.join(" ")
+            };
+        }
+        _ if ethernet.get_ethertype().0 == 0x8892 => {
+            summary.proto = "PROFINET-DCP".to_string();
+            summary.src = ethernet.get_source().to_string();
+            summary.dst = ethernet.get_destination().to_string();
+
+            let payload = ethernet.payload();
+            if payload.len() >= 12 {
+                let frame_id = u16::from_be_bytes([payload[0], payload[1]]);
+                let service_id = payload[2];
+                let service_type = payload[3];
+                let svc_name = match service_id {
+                    3 => "Get",
+                    4 => "Set",
+                    5 => "Identify",
+                    _ => "Unknown",
+                };
+                let svc_type_name = match service_type {
+                    0 => "Request",
+                    1 => "Response OK",
+                    5 => "Response Error",
+                    _ => "Unknown",
+                };
+                summary.info = format!("FrameID=0x{:04X} {} {}", frame_id, svc_name, svc_type_name);
+            } else {
+                summary.info = "PROFINET-DCP frame".to_string();
+            }
+        }
         _ => {
             summary.proto = format!("Ethernet (0x{:04X})", ethernet.get_ethertype().0);
             summary.src = ethernet.get_source().to_string();
@@ -131,6 +192,8 @@ fn matches_filter(packet: &PacketSummary, filter: &str) -> bool {
         ["arp"] => packet.proto == "ARP",
         ["icmp"] => packet.proto == "ICMP",
         ["ipv6"] | ["ip6"] => packet.proto == "IPv6",
+        ["lldp"] => packet.proto == "LLDP",
+        ["dcp"] => packet.proto == "PROFINET-DCP",
         
         // TCP port filters
         ["tcp", "port", port] => {
