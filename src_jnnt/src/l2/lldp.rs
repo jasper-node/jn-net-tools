@@ -635,13 +635,20 @@ pub fn lldp_send(iface_name: &str, ttl: u16) -> String {
 }
 
 fn get_hostname() -> Option<String> {
-    let mut buf = vec![0u8; 256];
-    let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-    if ret == 0 {
-        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        Some(String::from_utf8_lossy(&buf[..len]).to_string())
-    } else {
-        None
+    #[cfg(unix)]
+    {
+        let mut buf = vec![0u8; 256];
+        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+        if ret == 0 {
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            Some(String::from_utf8_lossy(&buf[..len]).to_string())
+        } else {
+            None
+        }
+    }
+    #[cfg(windows)]
+    {
+        std::env::var("COMPUTERNAME").ok()
     }
 }
 
