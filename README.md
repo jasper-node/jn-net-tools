@@ -234,7 +234,7 @@ const arpResult = await net.sniff("eth0", "arp", 5000, 10);
 #### Supported Filter Patterns
 
 ```typescript
-import { getSupportedFilters } from "@controlx-io/jn-net-tools/filters";
+import { getSupportedFilters } from "@controlx-io/jn-net-tools";
 
 const filters = getSupportedFilters();
 // Returns all supported filter patterns with descriptions
@@ -246,27 +246,11 @@ const filters = getSupportedFilters();
 | `udp`             | UDP packets only     | `sniff("en0", "udp", 5000, 10)`          |
 | `arp`             | ARP packets only     | `sniff("en0", "arp", 5000, 10)`          |
 | `icmp`            | ICMP packets only    | `sniff("en0", "icmp", 5000, 10)`         |
+| `ipv6`            | IPv6 packets only    | `sniff("en0", "ipv6", 5000, 10)`         |
 | `tcp port <port>` | TCP on specific port | `sniff("en0", "tcp port 443", 5000, 10)` |
 | `udp port <port>` | UDP on specific port | `sniff("en0", "udp port 53", 5000, 10)`  |
 | `port <port>`     | Any protocol on port | `sniff("en0", "port 80", 5000, 10)`      |
 | `host <ip>`       | Packets to/from IP   | `sniff("en0", "host 1.1.1.1", 5000, 10)` |
-
-#### Filter API
-
-The library provides helper functions to work with filters:
-
-```typescript
-import {
-  getFiltersByCategory, // Get filters grouped by category
-  getSupportedFilters, // Get all filter patterns
-  isValidFilter, // Validate a filter string
-} from "@controlx-io/jn-net-tools/filters";
-
-// Check if filter is valid before using
-if (isValidFilter("tcp port 443")) {
-  const result = await net.sniff("en0", "tcp port 443", 5000, 10);
-}
-```
 
 #### Packet Data
 
@@ -307,7 +291,7 @@ The pre-compiled FFI binaries are built and released automatically via GitHub Ac
    - Click **Run workflow**.
    - (Optional) Provide a version tag (e.g., `v1.0.0`).
 
-3. **JSR PublishL**
+3. **JSR Publish:**
    ```bash
    deno publish
    ```
