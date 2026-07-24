@@ -341,12 +341,15 @@ fn mtr_unix(target: &str, duration_ms: u32) -> String {
     let stats_clone = Arc::clone(&stats);
     let target_ip_clone = target_ip;
     let target_addr_clone = target_addr;
-    let handle = thread::spawn(move || {
+    let handle = thread::spawn(move || -> Result<(), String> {
         // Create raw socket for ICMP
         let sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_RAW, libc::IPPROTO_ICMP) };
 
         if sockfd < 0 {
-            return;
+            return Err(format!(
+                "Failed to create raw socket: {}",
+                std::io::Error::last_os_error()
+            ));
         }
 
         // Set socket timeout
@@ -535,9 +538,18 @@ fn mtr_unix(target: &str, duration_ms: u32) -> String {
         unsafe {
             libc::close(sockfd);
         }
+
+        Ok(())
     });
 
-    handle.join().ok();
+    // The probe runs on its own thread; without this the only failure it
+    // could report was an empty hop list, which reads as "no hops" rather
+    // than "could not probe".
+    let probe_error = match handle.join() {
+        Ok(Ok(())) => None,
+        Ok(Err(e)) => Some(e),
+        Err(_) => Some("MTR probe thread panicked".to_string()),
+    };
 
     let stats_guard = stats.lock().unwrap();
     let mut hops: Vec<HopStats> = stats_guard.values().cloned().collect();
@@ -553,9 +565,28 @@ fn mtr_unix(target: &str, duration_ms: u32) -> String {
     let result = MtrResult {
         target: target.to_string(),
         hops,
-        error: None,
+        error: probe_error,
     };
 
     serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An empty hop list is only an answer if it says why it is empty.
+    /// Unprivileged runs (no CAP_NET_RAW, non-root) must report the socket
+    /// failure rather than looking like a clean probe that found nothing.
+    #[test]
+    fn mtr_never_returns_silently_empty() {
+        let raw = mtr("127.0.0.1", 200);
+        let parsed: MtrResult =
+            serde_json::from_str(&raw).expect("mtr must return deserialisable JSON");
+        assert!(
+            !parsed.hops.is_empty() || parsed.error.is_some(),
+            "an empty hop list must carry an error explaining why, got: {}",
+            raw
+        );
+    }
+}
