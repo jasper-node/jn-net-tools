@@ -17,28 +17,6 @@
  * silently producing a library the fleet cannot load.
  */
 
-/** libpcap symbols jnnt actually imports. The real libpcap is never bundled —
- *  it is resolved from the device at runtime via `DT_NEEDED libpcap.so.0.8` —
- *  but `-lpcap` still needs a target-arch file to link against, which a cross
- *  build has no way to borrow from the host. A generated stub carrying the same
- *  soname satisfies the linker and contributes nothing to the output.
- *  A build that fails with `undefined symbol: pcap_*` means jnnt started using
- *  a new pcap call: add it here. */
-const PCAP_STUB_SYMBOLS = [
-  "pcap_activate",
-  "pcap_close",
-  "pcap_compile",
-  "pcap_create",
-  "pcap_freecode",
-  "pcap_geterr",
-];
-
-const PCAP_SONAME = "libpcap.so.0.8";
-
-/** Pins the pcap crate's API level so the build does not vary with whatever
- *  libpcap happens to be installed. 1.9.1 is the highest the crate recognises. */
-const LIBPCAP_VER = "1.9.1";
-
 interface TargetShape {
   triple: string;
   arch: string;
@@ -110,35 +88,6 @@ async function assertZigbuildAvailable(floor: string): Promise<void> {
   );
 }
 
-/** Writes a target-arch stand-in for libpcap and returns its directory. */
-async function buildPcapStub(shape: TargetShape): Promise<string> {
-  const dir = await Deno.makeTempDir({ prefix: `jnnt-pcap-${shape.arch}-` });
-  const source = `${dir}/pcap_stub.c`;
-  await Deno.writeTextFile(
-    source,
-    PCAP_STUB_SYMBOLS.map((symbol) => `void ${symbol}(void) {}`).join("\n") + "\n",
-  );
-  const { success, stderr } = await new Deno.Command("zig", {
-    args: [
-      "cc",
-      "-target",
-      `${shape.arch}-linux-gnu`,
-      "-shared",
-      "-fPIC",
-      `-Wl,-soname,${PCAP_SONAME}`,
-      "-o",
-      `${dir}/libpcap.so`,
-      source,
-    ],
-    stdout: "null",
-    stderr: "piped",
-  }).output();
-  if (!success) {
-    throw new Error(`Failed to build the libpcap link stub:\n${new TextDecoder().decode(stderr)}`);
-  }
-  return dir;
-}
-
 function parseArgs(args: string[]): { release: boolean; target: string | null } {
   let target: string | null = null;
   for (let i = 0; i < args.length; i++) {
@@ -159,33 +108,24 @@ async function main() {
   const cargoArgs = [release ? "--release" : null].filter(Boolean) as string[];
   const env: Record<string, string> = {};
   let subcommand = "build";
-  let stubDir: string | null = null;
 
   if (floor !== null) {
     await assertZigbuildAvailable(floor);
     subcommand = "zigbuild";
     // cargo-zigbuild reads the `.<glibc>` suffix and links that symbol set.
     cargoArgs.push("--target", `${shape.triple}.${floor}`);
-    stubDir = await buildPcapStub(shape);
-    env.LIBPCAP_LIBDIR = stubDir;
-    env.LIBPCAP_VER = LIBPCAP_VER;
     console.log(`Building jnnt for ${shape.triple} against the glibc ${floor} floor...`);
   } else {
     if (target) cargoArgs.push("--target", shape.triple);
     console.log(`Building jnnt for ${shape.triple} (${buildDir})...`);
   }
 
-  let build;
-  try {
-    build = await new Deno.Command("cargo", {
-      args: [subcommand, "-p", "jnnt", ...cargoArgs],
-      env,
-      stdout: "inherit",
-      stderr: "inherit",
-    }).output();
-  } finally {
-    if (stubDir) await Deno.remove(stubDir, { recursive: true }).catch(() => {});
-  }
+  const build = await new Deno.Command("cargo", {
+    args: [subcommand, "-p", "jnnt", ...cargoArgs],
+    env,
+    stdout: "inherit",
+    stderr: "inherit",
+  }).output();
   if (!build.success) {
     console.error("Cargo build failed");
     Deno.exit(1);
