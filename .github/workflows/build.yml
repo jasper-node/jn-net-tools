@@ -83,6 +83,9 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    env:
+      # Single source for both the build below and its backstop check.
+      JN_GLIBC_FLOOR: "2.17"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,45 +95,73 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
 
-      # We install 'cross' using a binary release for speed (cargo install is slow)
-      - name: Install Cross
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall -y cross
+      # Both Linux arches are built by scripts/build.ts, which links against the
+      # JN_GLIBC_FLOOR above via cargo-zigbuild. A plain cargo/cross build
+      # stamps the runner's glibc onto the library and it then fails to dlopen
+      # on older-glibc field devices with `version GLIBC_2.xx not found`.
+      # zig and cargo-zigbuild are pinned to the pair the JasperNode release
+      # server is provisioned with, so both repos' cdylibs link identically.
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
-      # Standard build for x86 (faster to run natively than in cross)
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --version 0.23.0 --locked
+
       - name: Build Linux x86_64
-        run: |
-          sudo apt-get update && sudo apt-get install -y libpcap-dev
-          cargo build -p jnnt --release --target x86_64-unknown-linux-gnu
+        run: deno run -A scripts/build.ts --release --target x86_64-unknown-linux-gnu
 
-      - name: Configure Cross for ARM64
-        run: |
-          cat > Cross.toml <<EOF
-          [target.aarch64-unknown-linux-gnu]
-          # Use the 'main' image tag which uses a newer Ubuntu version (usually 20.04+)
-          image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
-          pre-build = [
-              "dpkg --add-architecture arm64",
-              "apt-get update && apt-get install -y libpcap-dev:arm64"
-          ]
-
-          [target.aarch64-unknown-linux-gnu.env]
-          # Ensure pkg-config looks at the ARM64 libraries we just installed
-          PKG_CONFIG_PATH = "/usr/lib/aarch64-linux-gnu/pkgconfig"
-          PKG_CONFIG_ALLOW_CROSS = "1"
-          EOF
-
-      # Cross build for ARM64 using the Cross.toml we created above
       - name: Build Linux ARM64
+        run: deno run -A scripts/build.ts --release --target aarch64-unknown-linux-gnu
+
+      # Backstop: proves the floor actually held, independent of the toolchain
+      # that produced the libraries. Every branch below fails closed — a lib the
+      # check cannot read is reported as unverified, never as clean.
+      - name: Verify the glibc floor held
+        shell: bash
         run: |
-          cross build -p jnnt --release --target aarch64-unknown-linux-gnu
+          set -uo pipefail
+          floor="GLIBC_${JN_GLIBC_FLOOR}"
+          status=0
+          for lib in lib/jnnt-x86_64.so lib/jnnt-aarch64.so; do
+            tags=$(readelf -V "$lib" | grep -oE 'GLIBC_[A-Za-z0-9_.]+' | sort -u)
+            if [ -z "$tags" ]; then
+              echo "::error::$lib exposed no GLIBC_* requirements — unreadable, so treat it as unverified"
+              status=1
+              continue
+            fi
+            # Loader ABIs such as GLIBC_ABI_DT_RELR are not comparable versions;
+            # a floor-era loader simply does not provide them.
+            abi=$(printf '%s\n' "$tags" \
+                  | grep -vE '^(GLIBC_[0-9]+(\.[0-9]+)+|GLIBC_PRIVATE)$' || true)
+            if [ -n "$abi" ]; then
+              echo "::error::$lib requires loader ABI $(printf '%s' "$abi" | tr '\n' ' ') — a $floor loader does not provide it"
+              status=1
+              continue
+            fi
+            versions=$(printf '%s\n' "$tags" | grep -E '^GLIBC_[0-9]+(\.[0-9]+)+$')
+            # Sorting the floor in with the requirements: it stays last only
+            # when nothing needs anything newer.
+            max=$(printf '%s\n%s\n' "$versions" "$floor" | sort -u -V | tail -1)
+            echo "$lib requires up to $(printf '%s\n' "$versions" | sort -V | tail -1)"
+            if [ "$max" != "$floor" ]; then
+              echo "::error::$lib requires $max, above the $floor floor — it would fail to dlopen on older-glibc devices"
+              status=1
+            fi
+          done
+          exit $status
 
       - name: Prepare Linux binaries
         run: |
           mkdir -p dist/linux
-          cp target/x86_64-unknown-linux-gnu/release/libjnnt.so dist/linux/libjnnt-x86_64.so
-          cp target/aarch64-unknown-linux-gnu/release/libjnnt.so dist/linux/libjnnt-aarch64.so
+          cp lib/jnnt-x86_64.so dist/linux/libjnnt-x86_64.so
+          cp lib/jnnt-aarch64.so dist/linux/libjnnt-aarch64.so
 
       - name: Upload Linux binaries
         uses: actions/upload-artifact@v4
