@@ -252,6 +252,8 @@ The `Sniff` feature performs live packet capture using raw sockets. Because this
 
 The `sniff()` function supports packet filtering to capture only specific traffic. Filters are applied in userspace and work across all platforms.
 
+Only the forms in the table below are enforced. Anything else — including valid pcap syntax such as `tcp and port 502` — is **refused**: `sniff()` returns a `SniffResult` with `error` set and no packets, rather than quietly handing back every packet on the interface as if it were a filtered capture. Validate ahead of time with `isValidFilter()`.
+
 #### Basic Usage
 
 ```typescript
@@ -282,8 +284,13 @@ const filters = getSupportedFilters();
 | `dcp`             | PROFINET DCP only    | `sniff("en0", "dcp", 5000, 10)`          |
 | `tcp port <port>` | TCP on specific port | `sniff("en0", "tcp port 443", 5000, 10)` |
 | `udp port <port>` | UDP on specific port | `sniff("en0", "udp port 53", 5000, 10)`  |
-| `port <port>`     | Any protocol on port | `sniff("en0", "port 80", 5000, 10)`      |
+| `port <port>`     | TCP or UDP on port   | `sniff("en0", "port 80", 5000, 10)`      |
 | `host <ip>`       | Packets to/from IP   | `sniff("en0", "host 1.1.1.1", 5000, 10)` |
+
+A port filter matches the packet's **source or destination** port, and `<port>` must be a number
+from 0 to 65535. `host` takes a **literal** IPv4/IPv6 address or a MAC address (`aa:bb:cc:dd:ee:ff`)
+and matches the whole address — names are never resolved, and `host 192.168.1.1` does not match
+`192.168.1.10`.
 
 #### Packet Data
 
