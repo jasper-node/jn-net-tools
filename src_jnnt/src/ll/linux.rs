@@ -11,7 +11,6 @@ const ETH_P_ALL: u16 = 0x0003;
 pub struct LinuxRawSocket {
     lower: i32,
     async_fd: AsyncFd<RawFd>,
-    ifreq: libc::ifreq,
 }
 
 unsafe impl Send for LinuxRawSocket {}
@@ -33,14 +32,10 @@ impl LinuxRawSocket {
             lower
         };
 
-        // Initialize ifreq with zeros
-        let ifreq: libc::ifreq = unsafe { mem::zeroed() };
-
         match AsyncFd::new(lower) {
             Ok(async_fd) => Ok(Self {
                 lower,
                 async_fd,
-                ifreq,
             }),
             Err(e) => {
                 unsafe { libc::close(lower) };
@@ -50,18 +45,8 @@ impl LinuxRawSocket {
     }
 
     pub async fn bind(&mut self, interface: &str) -> io::Result<()> {
-        let mut ifreq: libc::ifreq = unsafe { mem::zeroed() };
         let c_str = std::ffi::CString::new(interface)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-        
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                c_str.as_ptr() as *const _,
-                ifreq.ifr_name.as_mut_ptr() as *mut _,
-                interface.len().min(15),
-            );
-        }
-        self.ifreq = ifreq;
 
         // Get interface index using if_nametoindex (more portable)
         let ifindex = unsafe {
@@ -98,58 +83,11 @@ impl LinuxRawSocket {
         Ok(())
     }
 
-    pub async fn set_filter(&mut self, filter: &str) -> io::Result<()> {
-        if filter.is_empty() {
-            return Ok(());
-        }
-
-        // Use pcap to compile the filter into BPF bytecode
-        // We need to get the interface name from ifreq
-        let iface_name = unsafe {
-            std::ffi::CStr::from_ptr(self.ifreq.ifr_name.as_ptr() as *const _)
-        };
-        
-        let iface_str = iface_name.to_str()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
-        let cap = pcap::Capture::from_device(iface_str)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open device for filter: {}", e)))?
-            .open()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to open capture for filter: {}", e)))?;
-
-        let program = cap.compile(filter, true)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to compile filter '{}': {}", filter, e)))?;
-
-        // Get the raw BPF program
-        // Linux uses sock_fprog structure for SO_ATTACH_FILTER
-        #[repr(C)]
-        struct sock_fprog {
-            len: libc::c_ushort,
-            filter: *const libc::sock_filter,
-        }
-
-        let insns = program.get_instructions();
-        let prog = sock_fprog {
-            len: insns.len() as libc::c_ushort,
-            filter: insns.as_ptr() as *const libc::sock_filter,
-        };
-
-        unsafe {
-            if libc::setsockopt(
-                self.lower,
-                libc::SOL_SOCKET,
-                libc::SO_ATTACH_FILTER,
-                &prog as *const _ as *const libc::c_void,
-                mem::size_of::<sock_fprog>() as libc::socklen_t,
-            ) < 0 {
-                let err = io::Error::last_os_error();
-                return Err(io::Error::new(
-                    err.kind(),
-                    format!("Failed to set filter '{}': {}", filter, err)
-                ));
-            }
-        }
-
+    pub async fn set_filter(&mut self, _filter: &str) -> io::Result<()> {
+        // sniff::capture::matches_filter applies the filter in userspace on every
+        // platform, so compiling it to BPF here only narrowed what userspace
+        // narrows anyway — and cost a libpcap.so.0.8 DT_NEEDED that every field
+        // device had to satisfy. macOS has always run without a kernel filter.
         Ok(())
     }
 }
