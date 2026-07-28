@@ -176,6 +176,11 @@ fn process_packet(packet: &[u8], include_data: bool) -> Option<PacketSummary> {
     Some(summary)
 }
 
+#[cfg(target_os = "windows")]
+const INTERFACE_NOT_FOUND_HINT: &str = " (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)";
+#[cfg(not(target_os = "windows"))]
+const INTERFACE_NOT_FOUND_HINT: &str = " (check the name against net_get_interfaces() output and that the interface is up)";
+
 /// Check if a packet matches the given filter
 fn matches_filter(packet: &PacketSummary, filter: &str) -> bool {
     if filter.is_empty() {
@@ -217,7 +222,7 @@ fn matches_filter(packet: &PacketSummary, filter: &str) -> bool {
         
         // Host filters
         ["host", ip] => {
-            packet.src.to_lowercase().contains(ip) || packet.dst.to_lowercase().contains(ip)
+            packet.src.to_lowercase() == *ip || packet.dst.to_lowercase() == *ip
         }
         
         // Port filter (any protocol)
@@ -243,7 +248,7 @@ pub fn sniff_packets(iface_name: &str, filter: &str, duration_ms: u32, max_packe
             let result = SniffResult {
                 captured: 0,
                 packets: vec![],
-                error: Some(format!("Interface {} not found (Ensure Npcap is installed in WinPcap-compatible mode and the interface exists)", iface_name)),
+                error: Some(format!("Interface {} not found{}", iface_name, INTERFACE_NOT_FOUND_HINT)),
             };
             return serde_json::to_string(&result).unwrap_or_else(|_| r#"{"error":"JSON serialization failed"}"#.to_string());
         }
