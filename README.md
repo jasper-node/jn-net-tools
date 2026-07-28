@@ -41,8 +41,8 @@ deno add jsr:@controlx-io/jn-net-tools
 
 - **Deno**: v2.6+ (Requires `--allow-ffi --unstable-ffi`)
 - **Rust**: v1.91+ (Only if building from source)
-- **Linux (runtime)**: `libpcap0.8` must be installed — the library resolves `libpcap.so.0.8` at load time. `setcap` may be required for raw socket tools (Ping/TraceRoute/MTR) without root.
-- **Linux (building from source)**: [zig](https://ziglang.org/) and [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild). `libpcap-dev` is **not** needed — `scripts/build.ts` generates its own link stub. See [glibc floor](#glibc-floor).
+- **Linux (runtime)**: no library packages required. `setcap` may be required for raw socket tools (Ping/TraceRoute/MTR) without root.
+- **Linux (building from source)**: [zig](https://ziglang.org/) and [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild). See [glibc floor](#glibc-floor).
 - **macOS**: Root privileges required for raw socket tools (Ping/TraceRoute/MTR).
 - **Windows**: [Npcap](https://npcap.com/) must be installed (ensure "Install Npcap in WinPcap API-compatible Mode" is checked). ICMP tools (Ping/TraceRoute/MTR) work without Administrator privileges via native Windows API.
 
@@ -88,9 +88,7 @@ deno run -A scripts/build.ts --release --target aarch64-unknown-linux-gnu
 Linux builds link against **glibc 2.17** via `cargo zigbuild --target <triple>.2.17`, so the
 library loads on older field devices. A plain `cargo build` instead stamps the build host's glibc
 onto it, and it then fails at load with `version GLIBC_2.xx not found` on anything older — the
-reason this floor exists. Because the linker still needs a target-arch `libpcap` to resolve
-`-lpcap`, `scripts/build.ts` generates a stub carrying soname `libpcap.so.0.8`; the real libpcap is
-always loaded from the device at runtime.
+reason this floor exists.
 
 Override with `JN_GLIBC_FLOOR` (e.g. `2.28`). `JN_GLIBC_FLOOR=none` skips the floor and links the
 host glibc — local debugging only, never ship it. Build Linux artefacts through `scripts/build.ts`
