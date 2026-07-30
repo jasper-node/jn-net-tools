@@ -97,8 +97,30 @@ export function getFiltersByCategory() {
   };
 }
 
+function isPort(token: string): boolean {
+  return /^\d{1,5}$/.test(token) && Number(token) <= 65535;
+}
+
 /**
- * Validate a filter pattern
+ * A literal the capture can compare against. Packet source and destination are
+ * IPs for IPv4/IPv6 frames and MAC addresses for LLDP, DCP and other
+ * ethertypes; names are never resolved, so a hostname matches nothing.
+ *
+ * Deliberately no stricter than the capture: it may pass through a malformed
+ * colon-form that `parse_filter` then refuses with a reason, but it never
+ * rejects an address the capture would have accepted.
+ */
+function isLiteralAddress(token: string): boolean {
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(token)) {
+    return token.split(".").every((octet) => Number(octet) <= 255);
+  }
+  return token.includes(":") && /^[0-9a-f:.]+$/.test(token);
+}
+
+/**
+ * Validate a filter pattern. Mirrors `parse_filter` in
+ * `src_jnnt/src/sniff/capture.rs` — the capture refuses anything this rejects,
+ * so the two grammars have to change together.
  */
 export function isValidFilter(filter: string): boolean {
   if (!filter || filter.trim() === "") {
@@ -120,22 +142,20 @@ export function isValidFilter(filter: string): boolean {
     const protocol = parts[0];
     const port = parts[2];
     if (protocol && port && (protocol === "tcp" || protocol === "udp")) {
-      return !isNaN(parseInt(port));
+      return isPort(port);
     }
   }
 
   // Generic port filter
   if (parts.length === 2 && parts[0] === "port") {
     const port = parts[1];
-    if (port) {
-      return !isNaN(parseInt(port));
-    }
+    return port !== undefined && isPort(port);
   }
 
   // Host filter
   if (parts.length === 2 && parts[0] === "host") {
     const host = parts[1];
-    return host !== undefined && host.length > 0;
+    return host !== undefined && isLiteralAddress(host);
   }
 
   return false;

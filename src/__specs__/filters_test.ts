@@ -136,7 +136,6 @@ Deno.test({
     assertEquals(isValidFilter("host 192.168.1.1"), true);
     assertEquals(isValidFilter("host 1.1.1.1"), true);
     assertEquals(isValidFilter("host 8.8.8.8"), true);
-    assertEquals(isValidFilter("host example.com"), true);
 
     // Case insensitive
     assertEquals(isValidFilter("HOST 192.168.1.1"), true);
@@ -144,6 +143,48 @@ Deno.test({
     // Missing host
     assertEquals(isValidFilter("host"), false);
     assertEquals(isValidFilter("host "), false);
+  },
+});
+
+// The Rust matcher (src_jnnt/src/sniff/capture.rs parse_filter) now refuses any
+// expression it cannot enforce. isValidFilter has to agree with it exactly, or
+// it green-lights a filter the capture then rejects.
+Deno.test({
+  name: "isValidFilter - port must be a whole number in range",
+  fn: () => {
+    assertEquals(isValidFilter("port 0"), true);
+    assertEquals(isValidFilter("port 65535"), true);
+
+    assertEquals(isValidFilter("port 65536"), false);
+    assertEquals(isValidFilter("port 99999"), false);
+    assertEquals(isValidFilter("port -1"), false);
+    assertEquals(isValidFilter("port 80abc"), false);
+    assertEquals(isValidFilter("port 8.0"), false);
+    assertEquals(isValidFilter("tcp port 70000"), false);
+    assertEquals(isValidFilter("udp port 53x"), false);
+  },
+});
+
+Deno.test({
+  name: "isValidFilter - host must be a literal address, never a name",
+  fn: () => {
+    assertEquals(isValidFilter("host aa:bb:cc:dd:ee:ff"), true);
+    assertEquals(isValidFilter("host fe80::1"), true);
+
+    // Names are never resolved, so these could only ever match nothing.
+    assertEquals(isValidFilter("host example.com"), false);
+    assertEquals(isValidFilter("host 192.168.1"), false);
+    assertEquals(isValidFilter("host 999.1.1.1"), false);
+  },
+});
+
+Deno.test({
+  name: "isValidFilter - compound pcap expressions are not supported",
+  fn: () => {
+    assertEquals(isValidFilter("tcp and port 502"), false);
+    assertEquals(isValidFilter("port 502 or port 503"), false);
+    assertEquals(isValidFilter("not arp"), false);
+    assertEquals(isValidFilter("src host 1.1.1.1"), false);
   },
 });
 
